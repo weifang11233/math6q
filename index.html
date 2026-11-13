@@ -160,87 +160,88 @@ function streak(){
   return n;
 }
 
-/* ───────── 教材结构（青岛版六三制六上 · 2025-2026 新教材目录）───────── */
+/* ───────── 教材结构（青岛版六三制六上 · 2026 年 7 月第 1 版课本目录逐字对齐）───────── */
 var UNITS=[
  {id:1,name:'分数乘法',theme:'小手艺展示',color:'#E8833A',board:'数与运算',kps:[
-   {id:'1-1',name:'分数乘整数',card:`<p><b>意思</b>：分数乘整数，就是求<b>几个相同加数的和</b>。</p>
-     <div class="exbox">例：做一件手工作品用 3/8 米彩绳，做 4 件要用多少米？<br>3/8 × 4 = 12/8 = <b>3/2（米）</b></div>
+   {id:'1-1',name:'分数乘整数',card:`<p><b>意思</b>：分数乘整数，就是求<b>几个相同加数的和</b>（课本信息窗 1：编中国结）。</p>
+     <div class="exbox">例：编一个小中国结用 2/3 小时，编 4 个要几小时？<br>2/3 × 4 = 2×4/3 = <b>8/3（小时）</b></div>
      <p><b>怎么算</b>：分子乘整数，分母不变；能约分的先约分再乘，更省力。</p>
      <div class="exambox">⚠ 易错：只乘分子、忘约分。口诀：<b>"乘分子、不变母，先约分、再相乘"</b>。</div>`,gens:['f1_int','f1_int_app','f1_int_money','f1_unit_conv','f1_compare_size']},
-   {id:'1-2',name:'分数乘分数',card:`<p><b>意思</b>：分数乘分数，就是求一个数的<b>几分之几</b>。</p>
-     <div class="exbox">例：3/4 的 2/5 是多少？<br>3/4 × 2/5 = 6/20 = <b>3/10</b></div>
-     <p><b>怎么算</b>：分子乘分子，分母乘分母；先约分再乘不容易错。</p>
-     <div class="exambox">⚠ 易错：以为会越乘越大。其实乘真分数会<b>越乘越小</b>（求一部分嘛）。</div>`,gens:['f1_ff','f1_ff_err','f1_milk_half','f1_triple_chain']},
-   {id:'1-3',name:'求一个数的几分之几',card:`<p><b>意思</b>：求一个数的几分之几是多少，用<b>乘法</b>。</p>
-     <div class="exbox">例：果园有 84 棵苹果树，梨树是苹果树的 2/3。梨树有多少棵？<br>84 × 2/3 = <b>56（棵）</b></div>
-     <p><b>关键</b>：找准"单位 1"——"是谁的几分之几"，谁就是单位 1，单位 1 已知就用乘法。</p>`,gens:['f1_of','f1_of_chain','f1_class_boys','f1_school_hours','f1_road2','f1_more_less','f1_steel_left','f1_rect_diff'],app:true}
+   {id:'1-2',name:'一个数乘分数（求一个数的几分之几）',card:`<p><b>意思</b>：求一个数的几分之几是多少，用<b>乘法</b>（课本信息窗 2：做拉花，求 8 米的 1/2、3/4）。</p>
+     <div class="exbox">例：每小时做 8 米拉花，1/2 小时做多少？就是求 8 的 1/2：<br>8 × 1/2 = <b>4（米）</b></div>
+     <p><b>算法</b>：分子乘分子，分母乘分母；先约分再乘不容易错。乘真分数会<b>越乘越小</b>。</p>`,gens:['f1_ff','f1_ff_err','f1_milk_half','f1_of','f1_class_boys','f1_school_hours']},
+   {id:'1-3',name:'连续求一个数的几分之几',card:`<p><b>意思</b>：连续求"一个数的几分之几的几分之几"，用<b>连乘</b>（课本信息窗 3：陶艺大赛三组连乘）。</p>
+     <div class="exbox">例：一共 96 件作品，二组做总数的 1/3，三组做二组的 5/8，三组做多少件？<br>96 × 1/3 × 5/8 = <b>20（件）</b></div>
+     <p><b>关键</b>：画线段图理清"谁是谁的几分之几"，一步一算。</p>`,gens:['f1_of_chain','f1_triple_chain','f1_more_less','f1_steel_left','f1_rect_diff'],app:true}
  ]},
- {id:2,name:'可能性',theme:'摸球游戏',color:'#8E6FB8',board:'统计与概率',kps:[
-   {id:'2-1',name:'一定 · 可能 · 不可能',card:`<p><b>判断三句话</b>：</p>
-     <p>🟢 全是红球 → 摸出红球<b>一定</b>发生；<br>🟡 有红有黄 → 摸出红球<b>可能</b>发生；<br>🔴 没有黄球 → 摸出黄球<b>不可能</b>发生。</p>
-     <div class="exambox">⚠ 易错："可能性小"不等于"不可能"，只要数量大于 0 就有可能！</div>`,gens:['f2_certain','f2_coin_fair','f2_two_draw','f2_paint_design']},
-   {id:'2-2',name:'可能性的大小',card:`<p><b>规律</b>：数量越<b>多</b>，摸到的可能性越<b>大</b>；数量相等，可能性就一样大。</p>
-     <div class="exbox">例：盒子里 6 个红球、2 个黄球，随便摸一个——摸到<b>红球</b>的可能性大。</div>
-     <p>还能用分数表示：摸到红球的可能性 = 红球数 ÷ 总球数。</p>`,gens:['f2_size','f2_score','f2_turntable','f2_dice','f2_cards','f2_expect','f2_experiment','f2_spinner_mini'],app:true}
- ]},
- {id:3,name:'分数除法',theme:'布艺兴趣小组',color:'#2E8B8B',board:'数与运算',kps:[
-   {id:'3-1',name:'倒数',card:`<p><b>定义</b>：乘积是 1 的两个数互为倒数。</p>
+ {id:2,name:'分数除法',theme:'走进乡村看小康',color:'#2E8B8B',board:'数与运算',kps:[
+   {id:'2-1',name:'倒数',card:`<p><b>定义</b>：乘积是 1 的两个数互为倒数（课本：2/3 和 3/2 互为倒数）。</p>
      <div class="exbox">3/5 的倒数是 <b>5/3</b>；7 的倒数是 <b>1/7</b>。</div>
      <div class="exambox">⚠ 两个易错点：1 的倒数是它自己（1）；<b>0 没有倒数</b>。</div>`,gens:['f3_recip']},
-   {id:'3-2',name:'分数除法的算法',card:`<p><b>一句话</b>：除以一个数（0 除外），等于<b>乘这个数的倒数</b>。</p>
-     <div class="exbox">例：4/5 ÷ 2/5 = 4/5 × 5/2 = <b>2</b><br>（除号变乘号，除数翻跟头）</div>`,gens:['f3_div','f3_paper_share','f3_milk_cups','f3_solve_equation']},
-   {id:'3-3',name:'已知部分求整体',card:`<p><b>意思</b>：知道一个数的几分之几是多少，求这个数——用<b>除法</b>（或列方程）。</p>
-     <div class="exbox">例：一件衣服打完折是 120 元，是原价的 3/5。原价多少？<br>120 ÷ 3/5 = <b>200（元）</b></div>
-     <p><b>关键</b>：单位 1 未知就除法；"是多少"对应"几分之几"，对应好了再除。</p>`,gens:['f3_find_whole','f3_div_err','f3_daily_read','f3_print_time','f3_rope_total','f3_bucket','f3_read_remain','f3_price_drop','f3_train_trip','f3_tunnel_two','f3_paper_stack','f3_swim_run'],app:true}
+   {id:'2-2',name:'分数除以整数 · 一个数除以分数',card:`<p><b>一句话</b>：甲数除以乙数（0 除外），等于甲数乘乙数的<b>倒数</b>（课本信息窗：收割机 2/3 小时收割 5/8 公顷）。</p>
+     <div class="exbox">例：5/8 ÷ 2/3 = 5/8 × 3/2 = <b>15/16</b></div>
+     <p><b>道理</b>：把被除数、除数同乘除数的倒数，商不变——和商不变的规律一脉相承。</p>`,gens:['f3_div','f3_paper_share','f3_milk_cups','f3_solve_equation','f3_div_err']},
+   {id:'2-3',name:'已知一个数的几分之几是多少，求这个数',card:`<p><b>意思</b>：单位 1 未知，用<b>除法</b>或列方程（课本：双休日游客 280 人，占总人数的 2/5，求总人数）。</p>
+     <div class="exbox">例：280 ÷ 2/5 = 280 × 5/2 = <b>700（人）</b></div>
+     <p><b>检验</b>：用乘法代回去——700 × 2/5 = 280 ✓（课本就是这样教检验的）</p>`,gens:['f3_find_whole','f3_daily_read','f3_print_time','f3_rope_total','f3_bucket','f3_read_remain','f3_price_drop','f3_train_trip','f3_tunnel_two','f3_paper_stack','f3_swim_run'],app:true}
  ]},
- {id:4,name:'比',theme:'人体的奥秘',color:'#C05C7E',board:'数与运算',kps:[
-   {id:'4-1',name:'比的意义与比值',card:`<p><b>比</b>：两个数相除又叫两个数的比。a : b = a ÷ b。</p>
-     <div class="exbox">例：身高与影子的比 6 : 4，比值 = 6 ÷ 4 = 3/2 = 1.5</div>
-     <p><b>比值</b>是个数（可以是分数、小数、整数），后面不带单位。</p>`,gens:['f4_value']},
-   {id:'4-2',name:'化简比',card:`<p><b>性质</b>：比的前项和后项同时乘或除以同一个数（0 除外），比值不变。</p>
-     <div class="exbox">12 : 18 → 同除以 6 → <b>2 : 3</b></div>
-     <div class="exambox">⚠ 化简比结果是<b>比</b>（要写成 a : b），求比值结果是<b>数</b>。别混！</div>`,gens:['f4_simplify','f4_prop_err','f4_work_ratio','f4_speed_time_ratio','f4_granary_ratio','f4_move_equal','f4_alcohol_mix']},
-   {id:'4-3',name:'按比例分配',card:`<p><b>方法</b>：先求总份数，再算每份是多少，最后乘各自的份数。</p>
-     <div class="exbox">例：把 40 颗糖按 3 : 2 分给兄妹，<br>总份数 3+2=5，每份 40÷5=8，兄 8×3=<b>24</b> 颗、妹 8×2=16 颗。</div>`,gens:['f4_share','f4_share_app','f4_sugar_water','f4_salt_water','f4_class_ratio','f4_concrete'],app:true}
+ {id:3,name:'比',theme:'劳动实践长学问',color:'#C05C7E',board:'数与运算',kps:[
+   {id:'3-1',name:'比的意义与比值',card:`<p><b>比</b>：两个数量的倍数关系可以用比来表示（课本信息窗：氮肥兑水 1:500、走路 320:4）。</p>
+     <div class="exbox">例：320 米走了 4 分钟，路程与时间的比 320 : 4，比值 = 320÷4 = <b>80（米/分）</b></div>
+     <p><b>比值</b> = 前项 ÷ 后项，可以是分数或小数。比的后项不能是 0。</p>`,gens:['f4_value']},
+   {id:'3-2',name:'比的基本性质与化简比',card:`<p><b>性质</b>：比的前项和后项同时乘或除以相同的数（0 除外），比值不变。</p>
+     <div class="exbox">12 : 18 → 同除以 6 → <b>2 : 3</b>；化简 1.25 : 0.4 → 同乘 100 → 125:40 → <b>25 : 8</b></div>
+     <div class="exambox">⚠ 化简比结果是<b>比</b>，求比值结果是<b>数</b>。别混！</div>`,gens:['f4_simplify','f4_prop_err','f4_work_ratio','f4_speed_time_ratio','f4_granary_ratio','f4_move_equal','f4_alcohol_mix']},
+   {id:'3-3',name:'按比例分配',card:`<p><b>方法</b>：先求总份数，再算每份是多少，最后乘各自的份数（课本：菜园 50 平方米按 2:3 种黄瓜茄子）。</p>
+     <div class="exbox">例：总面积 50 平方米按 2 : 3，总份数 5，每份 10，黄瓜 <b>20</b>、茄子 <b>30</b> 平方米。</div>`,gens:['f4_share','f4_share_app','f4_sugar_water','f4_salt_water','f4_class_ratio','f4_concrete'],app:true}
  ]},
- {id:5,name:'圆',theme:'完美的图形',color:'#3A6EA5',board:'图形与几何',kps:[
-   {id:'5-1',name:'圆的认识',card:`<p><b>三兄弟</b>：圆心 O（定位置）、半径 r（圆心到圆上）、直径 d（过圆心两端在圆上）。</p>
-     <p><b>关系</b>：同一个圆里，d = 2r；半径有无数条，都相等。</p>
-     <div class="exambox">⚠ 决定圆<b>大小</b>的是半径（直径），决定圆<b>位置</b>的是圆心。</div>`,gens:['f5_rd','f5_concept']},
-   {id:'5-2',name:'圆的周长',card:`<p><b>公式</b>：C = πd = 2πr（计算时 π 取 3.14）。</p>
-     <div class="exbox">例：r = 5 厘米，C = 2 × 3.14 × 5 = <b>31.4（厘米）</b></div>
-     <div class="exambox">⚠ 半圆的周长 = πr + 2r（一条弧 + 一条直径），别只算弧！</div>`,gens:['f5_c','f5_halfc','f5_fountain','f5_roll','f5_compass','f5_rope_wrap','f5_max_circle_sq','f5_bike_ride','f5_tree_interval','f5_ring_path','f5_track_start'],app:true},
-   {id:'5-3',name:'圆的面积',card:`<p><b>公式</b>：S = πr²。把圆切成小扇形拼成近似长方形推出来的。</p>
-     <div class="exbox">例：r = 4 米，S = 3.14 × 4² = <b>50.24（平方米）</b></div>
-     <div class="exambox">⚠ 环形面积 = πR² − πr² = π(R² − r²)。</div>`,gens:['f5_s','f5_ring','f5_grass'],app:true}
+ {id:4,name:'圆',theme:'完美的图形',color:'#3A6EA5',board:'图形与几何',kps:[
+   {id:'4-1',name:'圆的认识 · 扇形',card:`<p><b>三兄弟</b>：圆心 O（定位置）、半径 r、直径 d。同一个圆里 d = 2r，半径直径都有无数条且相等。</p>
+     <p><b>墨子说</b>："圆，一中同长也。"圆是轴对称图形，有<b>无数条</b>对称轴（每条直径所在直线）。</p>
+     <p><b>扇形</b>：一条弧和经过这条弧两端的两条半径围成的图形；顶点在圆心的角叫圆心角。</p>`,gens:['f5_rd','f5_concept']},
+   {id:'4-2',name:'圆的周长',card:`<p><b>圆周率</b>：圆的周长与直径的比值是固定的数，叫圆周率 π = 3.1415926…，计算取 3.14（课本：祈年殿底层周长）。</p>
+     <div class="exbox">C = πd = 2πr。例：直径 32 米，周长 = 32 × 3.14 = <b>100.48（米）</b></div>
+     <div class="exambox">⚠ 半圆周长 = πr + 2r（一条弧 + 一条直径），别只算弧！</div>`,gens:['f5_c','f5_halfc','f5_fountain','f5_roll','f5_compass','f5_rope_wrap','f5_max_circle_sq','f5_bike_ride','f5_tree_interval'],app:true},
+   {id:'4-3',name:'圆的面积 · 环形',card:`<p><b>公式</b>：S = πr²。把圆平均分成若干小扇形，拼成近似长方形推出来的（课本：神舟返回舱降落范围）。</p>
+     <div class="exbox">例：r = 10 km，S = 3.14 × 10² = <b>314（平方千米）</b></div>
+     <p><b>环形</b>：求环形的面积，用<b>外圆面积减内圆面积</b>：π(R² − r²)（课本：环形桌面）。</p>`,gens:['f5_s','f5_ring','f5_grass','f5_ring_path'],app:true}
  ]},
- {id:6,name:'分数四则混合运算',theme:'中国的世界遗产',color:'#B8860B',board:'数与运算',kps:[
-   {id:'6-1',name:'运算顺序',card:`<p><b>和整数一样</b>：先乘除后加减，有括号先算括号里的。</p>
-     <div class="exbox">例：20 + 12 × 3/4 = 20 + 9 = <b>29</b>（先乘后加）</div>`,gens:['f6_order','f6_remain_frac','f6_return_trip','f6_cargo_three','f6_duck_chicken','f6_class_move']},
-   {id:'6-2',name:'运算律的妙用',card:`<p><b>简便运算</b>：乘法分配律 a×(b+c) = a×b + a×c 在分数里照样好用。</p>
-     <div class="exbox">例：(1/4 + 1/6) × 12 = 12×1/4 + 12×1/6 = 3 + 2 = <b>5</b></div>
-     <div class="exambox">⚠ 看见括号外有整数别急着按顺序硬算，先想能不能分配！</div>`,gens:['f6_dist','f6_multi','f6_two_days','f6_price_mix','f6_budget']}
+ {id:5,name:'解决问题',theme:'中国的世界遗产',color:'#B8860B',board:'数与运算',kps:[
+   {id:'5-1',name:'稍复杂的分数乘法问题',card:`<p><b>意思</b>：求<b>比一个数多（少）几分之几</b>的数是多少（课本信息窗：现代女子比"北京人"女子高 1/8）。</p>
+     <div class="exbox">例："北京人"女子身高 144 cm，现代女子比她高 1/8：<br>144 × (1 + 1/8) = 144 × 9/8 = <b>162（cm）</b></div>
+     <p><b>两法</b>：先求多的部分再加（144+144×1/8）；或先算分率再乘（144×9/8）。</p>`,gens:['f6_order','f6_remain_frac','f6_multi','f6_two_days']},
+   {id:'5-2',name:'较复杂的分数除法问题',card:`<p><b>意思</b>：已知"比一个数多（少）几分之几"的数，求这个数——单位 1 未知，除法或方程（课本：颐和园、布达拉宫）。</p>
+     <div class="exbox">例：昆明湖 225 公顷，万寿山是颐和园的 1/4：<br>225 ÷ (1 − 1/4) = 225 ÷ 3/4 = <b>300（公顷）</b></div>
+     <div class="exambox">⚠ 布达拉宫型："东西长 360 m，比南北长多 1/5" → 南北 = 360 ÷ (1 + 1/5) = <b>300（m）</b>。多 1/5 是分率 +1。</div>`,gens:['f6_price_mix','f6_budget','f6_return_trip','f6_cargo_three','f6_duck_chicken','f6_class_move'],app:true}
  ]},
- {id:7,name:'百分数（一）',theme:'体检中的百分数',color:'#2E6B4F',board:'数与运算',kps:[
-   {id:'7-1',name:'百分数的意义与互化',card:`<p><b>意义</b>：表示一个数是另一个数的百分之几的数，又叫百分率。</p>
-     <p><b>互化</b>：百分数→小数，去掉 % 小数点左移两位；小数→百分数，反过来。</p>
-     <div class="exbox">0.35 = 35%；3/4 = 75%；120% = 1.2</div>`,gens:['f7_conv','f7_conv2']},
-   {id:'7-2',name:'求百分率',card:`<p><b>公式</b>：百分率 = 部分数 ÷ 总数 × 100%。</p>
-     <div class="exbox">例：20 题做对 18 题，正确率 = 18÷20 = <b>90%</b></div>`,gens:['f7_rate','f7_of','f7_survival','f7_pass_rate','f7_fail_rate','f7_oil_rate','f7_shoes_pass','f7_attend_rate','f7_sprout_rate','f7_survive_replant','f7_share_work','f7_discount_pct','f7_plan_extra','f7_price_rise','f7_read_two_days'],app:true},
-   {id:'7-3',name:'多百分之几 · 少百分之几',card:`<p><b>关键</b>：比谁多（少），就除以<b>谁</b>——"比"字后面那个数是单位 1。</p>
-     <div class="exbox">例：50 比 40 多百分之几？(50−40) ÷ 40 = <b>25%</b></div>
-     <div class="exambox">⚠ 多 25% ≠ 少 25%！50 比 40 多 25%，但 40 比 50 少 20%。单位 1 不同。</div>`,gens:['f7_more','f7_less'],app:true}
+ {id:6,name:'可能性',theme:'抽奖转盘',color:'#8E6FB8',board:'统计与概率',kps:[
+   {id:'6-1',name:'确定事件与不确定事件',card:`<p><b>判断三句话</b>（课本：商场抽奖转盘——每个区域都有奖，"一定会中奖"是确定事件，中几等奖是不确定事件）：</p>
+     <p>🟢 全是红球 → 摸出红球<b>一定</b>发生；🟡 有红有黄 → <b>可能</b>发生；🔴 没有黄球 → <b>不可能</b>发生。</p>
+     <div class="exambox">⚠ "可能性小"不等于"不可能"，只要数量大于 0 就有可能！</div>`,gens:['f2_certain','f2_coin_fair','f2_two_draw','f2_paint_design']},
+   {id:'6-2',name:'可能性的大小',card:`<p><b>规律</b>：区域（数量）越大，可能性越大；相等就一样大。可以根据可能性的大小<b>做决策</b>（课本：三等奖区域占 4/8 最大）。</p>
+     <div class="exbox">转盘 8 份：三等奖 4 份、二等奖 3 份、一等奖 1 份 → 抽到三等奖可能性最大。</div>
+     <p>可能性还能用分数表示：份数 ÷ 总份数。设计转盘/放球就调比例。</p>`,gens:['f2_size','f2_score','f2_turntable','f2_dice','f2_cards','f2_expect','f2_experiment','f2_spinner_mini'],app:true}
+ ]},
+ {id:7,name:'方向与位置',theme:'走进军营',color:'#2E6B4F',board:'图形与几何',kps:[
+   {id:'7-1',name:'用数对确定位置',card:`<p><b>数对</b>（列，行）：竖排叫<b>列</b>（从左向右数），横排叫<b>行</b>（从前往后数）。课本：王强在第 3 列第 2 行 → 数对（3，2）。</p>
+     <div class="exbox">（3，2）= 第 3 列第 2 行。<b>前面的数表示列，后面的数表示行</b>，别写反！</div>
+     <div class="exambox">⚠ 笛卡儿发明坐标系的故事在课本"文化广角"里。</div>`,gens:['f7_coord','f7_coord_move']},
+   {id:'7-2',name:'方向与距离确定位置',card:`<p><b>两要素</b>：方向 + 距离。课本：红军阵地在指挥部的<b>北偏西 40° 方向 10 千米</b>处。</p>
+     <p><b>三步</b>：①定观测点 ②量角度（以南北为基准说"北偏X/南偏X"）③量图上距离按比例尺换算。</p>
+     <div class="exambox">⚠ 只说方向（无数个点）或只说距离（一圈的点）都不能定位置，缺一不可。</div>`,gens:['f7_direction','f7_direction_read']},
+   {id:'7-3',name:'描述并绘制行走路线',card:`<p><b>怎么走</b>：从起点出发，按"方向 + 距离"一段一段说（课本：从指挥部先向北偏东 50° 方向走 20 千米到达蓝军阵地，再……）。</p>
+     <div class="exbox">每段都要说清：从哪出发、往什么方向（偏多少度）、走多远、到了哪。</div>`,gens:['f7_route']}
  ]},
  {id:8,name:'回顾整理 · 总复习',theme:'全册串烧',color:'#5A5346',board:'综合',kps:[
-   {id:'8-1',name:'全册综合闯关',card:`<p>把七个单元的知识串起来练：分数乘除、比、圆、百分数一起上，专治"学后面忘前面"。</p>`,gens:['rev_mix']}
+   {id:'8-1',name:'全册综合闯关',card:`<p>把课本七个单元的知识串起来练：分数乘除、比、圆、解决问题、可能性、方向与位置一起上，专治"学后面忘前面"。</p>`,gens:['rev_mix']}
  ]}
 ];
 
 /* 板块视图 */
 var BOARDS=[
- {name:'数与运算',color:'#E8833A',desc:'分数乘除 · 比 · 混合运算 · 百分数',units:[1,3,4,6,7]},
- {name:'图形与几何',color:'#3A6EA5',desc:'圆的认识 · 周长 · 面积',units:[5]},
- {name:'统计与概率',color:'#8E6FB8',desc:'可能性 · 可能性的大小',units:[2]}
+ {name:'数与运算',color:'#E8833A',desc:'分数乘除 · 比 · 解决问题',units:[1,2,3,5]},
+ {name:'图形与几何',color:'#3A6EA5',desc:'圆 · 方向与位置',units:[4,7]},
+ {name:'统计与概率',color:'#8E6FB8',desc:'可能性 · 可能性的大小',units:[6]}
 ];
 
 /* ───────── 出题生成器（全部原创）─────────────────────────
@@ -1038,6 +1039,43 @@ f7_read_two_days:function(u,k){
     exp:`第二天占的：${t[1]} ÷ ${t[0]} = ${d2}%；第一天占的 = 两天合计 − 第二天 = ${t[2]}% − ${d2}% = ${first}%。单位 1 相同时，百分率可以直接相加减。`};
 },
 
+/* —— 第七单元 方向与位置（2026 新版课本）—— */
+f7_coord:function(u,k){
+  var t=pick([[3,2],[1,4],[5,2],[6,5],[2,3],[4,1],[5,6],[2,5]]);
+  var mode=R(2);
+  if(mode===0)return{q:`军训队列中，王强的位置在第 ${t[0]} 列第 ${t[1]} 行。用数对表示他的位置是？（按 a,b 的形式填，如 3,2）`,
+    ans:t[0]+','+t[1],unit:u,kp:k,
+    exp:`数对（列，行）：竖排叫列（从左往右数），横排叫行（从前往后数）。第 ${t[0]} 列第 ${t[1]} 行 → (${t[0]},${t[1]})。前面的数表示列，后面的数表示行。`};
+  return{q:`张亮的位置用数对表示是（${t[0]}，${t[1]}）。他在第几列第几行？（按"第a列第b行"的形式填）`,
+    ans:`第${t[0]}列第${t[1]}行`,unit:u,kp:k,
+    exp:`数对（${t[0]}，${t[1]}）：前面的数表示列 → 第 ${t[0]} 列；后面的数表示行 → 第 ${t[1]} 行。`};
+},
+f7_coord_move:function(u,k){
+  var c=1+R(5),r=1+R(4);
+  return{q:`赵军用数对（${c}，${r}）表示自己的位置。他向后移动 2 行（还在同一列），新的位置用数对表示是？（按 a,b 的形式填）`,
+    ans:c+','+(r+2),unit:u,kp:k,
+    exp:`"向后移动"是行数增加：列不变 ${c}，行 ${r}+2=${r+2} → (${c},${r+2})。数对里列在前、行在后，移动时只变对应的那个数。`};
+},
+f7_direction:function(u,k){
+  var t=pick([[40,10,'北偏西'],[30,20,'北偏东'],[60,15,'南偏东'],[35,25,'南偏西'],[50,30,'北偏东']]);
+  return{q:`以指挥部为观测点，红军阵地在${t[2]} ${t[0]}°方向 ${t[1]} 千米处。要准确确定红军阵地的位置，必须知道哪两个要素？`,
+    ops:shuffle(['方向和距离','只说方向就行','只说距离就行','时间和速度']),ans:'方向和距离',unit:u,kp:k,
+    exp:`确定平面内一个物体的准确位置：先确定观测点，还需要知道物体相对于观测点的<b>方向</b>和<b>距离</b>。只说方向有无数个点，只说距离是一个圆，都不能定位置。`};
+},
+f7_direction_read:function(u,k){
+  var t=pick([[40,10,'北偏西','红军阵地'],[50,20,'北偏东','蓝军阵地'],[65,15,'南偏东','雷达站'],[45,12,'南偏西','巡洋舰']]);
+  return{q:`以雷达站为观测点，某舰艇在${t[2]} ${t[0]}°方向 ${t[1]} 千米处。下面哪种说法是准确的？`,
+    ops:shuffle([`${t[3]}在${t[2]} ${t[0]}°方向 ${t[1]} 千米处`,`${t[3]}在${t[2]}方向 ${t[1]} 千米处（没说角度）`,`${t[3]}在${t[2]} ${t[0]}°方向（没说距离）`,`${t[3]}在雷达站${t[1]} 千米处（没说方向）`]),
+    ans:`${t[3]}在${t[2]} ${t[0]}°方向 ${t[1]} 千米处`,unit:u,kp:k,
+    exp:`准确描述位置三件套：观测点 + 方向（含角度，以南北为基准说"北偏X/南偏X"）+ 距离。三缺一都不准确。`};
+},
+f7_route:function(u,k){
+  var t=pick([['蓝军阵地',50,'北偏东',20],['大沙河',35,'南偏西',15],['宿营地',60,'北偏西',25]]);
+  return{q:`从指挥部出发去${t[0]}：先向北偏东 40° 方向走 10 千米到达中转站，再向${t[2]} ${t[1]}° 方向走 ${t[3]} 千米就到了。去程一共走了多少千米？（填数）`,
+    ans:String(10+t[3]),unit:u,kp:k,app:1,
+    exp:`描述行走路线要一段一段说清"方向 + 距离"。总路程 = 各段相加：10 + ${t[3]} = ${10+t[3]}（千米）。`};
+},
+
 rev_mix:function(u,k){
   var pool=[];
   UNITS.slice(0,7).forEach(function(un){un.kps.forEach(function(kp){kp.gens.forEach(function(g){if(!GENS[g])return;pool.push({g:g,u:un.id,k:kp.id})})})});
@@ -1056,7 +1094,7 @@ var GENLVL={
  f4_simplify:1,f4_value:1,f4_share:2,f4_share_app:2,f4_prop_err:3,f4_sugar_water:2,f4_salt_water:2,f4_class_ratio:1,f4_concrete:3,f4_work_ratio:3,f4_speed_time_ratio:2,f4_granary_ratio:3,f4_move_equal:3,f4_alcohol_mix:3,
  f5_rd:1,f5_concept:1,f5_c:2,f5_halfc:3,f5_s:2,f5_ring:3,f5_fountain:1,f5_roll:2,f5_compass:2,f5_grass:3,f5_rope_wrap:2,f5_max_circle_sq:2,f5_bike_ride:3,f5_tree_interval:1,f5_ring_path:3,f5_track_start:3,
  f6_order:1,f6_dist:2,f6_multi:3,f6_two_days:2,f6_price_mix:2,f6_budget:1,f6_remain_frac:2,f6_return_trip:2,f6_cargo_three:3,f6_duck_chicken:2,f6_class_move:3,
- f7_conv:1,f7_conv2:1,f7_rate:2,f7_of:2,f7_more:3,f7_less:3,f7_survival:1,f7_pass_rate:2,f7_fail_rate:2,f7_oil_rate:3,f7_shoes_pass:3,f7_attend_rate:1,f7_sprout_rate:2,f7_survive_replant:3,f7_share_work:2,f7_discount_pct:1,f7_plan_extra:2,f7_price_rise:3,f7_read_two_days:3,
+ f7_coord:1,f7_coord_move:2,f7_direction:1,f7_direction_read:1,f7_route:2,
  rev_mix:2
 };
 function genPool(unitId,level){
@@ -1507,10 +1545,10 @@ VIEWS.map=function(){
   <svg class="map" viewBox="0 0 520 340" xmlns="http://www.w3.org/2000/svg">
     <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#B8B2A0"/></marker></defs>
     ${nodes}
-    <text x="260" y="26" text-anchor="middle" font-size="13" fill="#8A8474" font-weight="bold">学习顺序：乘法 → 可能性 → 除法 → 比 ↓ 圆 → 混合运算 → 百分数 → 总复习</text>
+    <text x="260" y="26" text-anchor="middle" font-size="13" fill="#8A8474" font-weight="bold">学习顺序：分数乘法 → 分数除法 → 比 → 圆 ↓ 解决问题 → 可能性 → 方向与位置 → 总复习</text>
   </svg></div>
   <div class="card"><h2>为什么是这个顺序？</h2>
-  <p style="font-size:14px">分数乘法是地基 → 除法是乘法的逆运算 → 比（除法关系）→ 混合运算把乘除串起来 → 百分数是"特殊的分数"。<b>圆</b>是独立的图形线，最好排在中间学，前后都能用（圆的周长面积要用小数乘法）。</p></div>`;
+  <p style="font-size:14px">分数乘法是地基 → 除法是乘法的逆运算 → 比（除法关系的一种表达）→ 圆是独立的图形线（周长面积要用小数乘法）→ 解决问题把分数乘除串起来（比一个数多/少几分之几）→ 可能性用分数表达大小 → 方向与位置用数对和角度定位置。</p></div>`;
 };
 
 /* —— 按板块攻 —— */
@@ -1543,25 +1581,25 @@ function startBoardDrill(uids){
 
 /* —— 速查大表 —— */
 var CHEAT=[
- ['分数乘整数','分子乘整数，分母不变','3/8 × 4 = 3/2'],
- ['分数乘分数','分子乘分子，分母乘分母，先约分','3/4 × 2/5 = 3/10'],
- ['求一个数的几分之几','单位 1 已知 → 乘法','84 × 2/3 = 56'],
+ ['分数乘整数','分子乘整数，分母不变（课本：编中国结 2/3×4）','3/8 × 4 = 3/2'],
+ ['一个数乘分数','求一个数的几分之几，用乘法','3/4 × 2/5 = 3/10'],
+ ['连续求几分之几','连乘；画线段图理清谁是谁的几分之几','96 × 1/3 × 5/8 = 20'],
  ['倒数','乘积是 1；分子分母换位；0 没有倒数','3/5 ↔ 5/3'],
- ['分数除法','除以一个数 = 乘它的倒数','4/5 ÷ 2/5 = 2'],
- ['已知部分求整体','单位 1 未知 → 除法','120 ÷ 3/5 = 200'],
- ['比与比值','a:b = a÷b，比值是一个数','6:4 比值 3/2'],
- ['化简比','同乘同除同一个数（0除外）','12:18 = 2:3'],
- ['按比例分配','总份数→每份→乘份数','40 按 3:2 → 24 和 16'],
- ['圆心 / 半径 / 直径','圆心定位置，半径定大小，d=2r','r=5 则 d=10'],
- ['圆的周长','C = πd = 2πr（π=3.14）','r=5 → C=31.4'],
+ ['分数除法','甲÷乙（0除外）= 甲乘乙的倒数','4/5 ÷ 2/5 = 2'],
+ ['已知部分求整体','单位 1 未知 → 除法或方程；用乘法检验','280 ÷ 2/5 = 700'],
+ ['比与比值','a:b = a÷b，比值是一个数；后项不能为 0','6:4 比值 3/2'],
+ ['化简比','前项后项同乘同除同一个数（0除外）','12:18 = 2:3；1.25:0.4 = 25:8'],
+ ['按比例分配','总份数→每份→乘份数','50 按 2:3 → 20 和 30'],
+ ['圆心 / 半径 / 直径','圆心定位置，半径定大小，d=2r；一中同长','r=5 则 d=10'],
+ ['圆的周长','C = πd = 2πr（π=3.14）','d=32 → C=100.48'],
  ['半圆周长','πr + 2r（弧+直径）','r=6 → 18.84+12=30.84'],
- ['圆的面积','S = πr²','r=4 → 50.24'],
- ['环形面积','π(R² − r²)','R=5,r=3 → 50.24'],
- ['运算顺序','先乘除后加减，括号优先','20 + 12×3/4 = 29'],
- ['乘法分配律','a(b+c)=ab+ac，分数照样用','(1/4+1/6)×12 = 5'],
- ['百分数意义','一个数是另一个数的百分之几','35% = 0.35 = 7/20'],
- ['求百分率','部分 ÷ 总数 × 100%','18/20 = 90%'],
- ['多/少百分之几','差 ÷ "比"字后面的数','50 比 40 多 25%'],
+ ['圆的面积','S = πr²（切扇形拼长方形推出来）','r=10 → 314'],
+ ['环形面积','外圆面积 − 内圆面积：π(R² − r²)','R=5,r=3 → 50.24'],
+ ['稍复杂的分数乘法','求比一个数多/少几分之几的数：先算分率再乘','144×(1+1/8)=162'],
+ ['较复杂的分数除法','已知比一个数多/少几分之几的数求这个数','225÷(1−1/4)=300'],
+ ['用数对确定位置','（列，行）竖排列从左数，横行从前往后','(3,2)=第3列第2行'],
+ ['方向与距离定位置','观测点+方向（北偏X/南偏X含角度）+距离','北偏西40°方向10千米'],
+ ['描述行走路线','一段一段说：起点→方向→距离→到达','先北偏东50°走20千米，再…'],
  ['可能性','数量多→可能性大；可能性=数量÷总数','6球2红 → 摸红 = 1/3']
 ];
 VIEWS.cheat=function(){
@@ -1578,7 +1616,7 @@ VIEWS.cheat=function(){
 VIEWS.four=function(){
   app.innerHTML=`<div class="topbar"><button class="backbtn" onclick="go('home')">‹ 首页</button><h1>🪜 应用题四步法</h1></div>
   <div class="card">
-    <div class="step"><div class="n">1</div><div><b>圈一圈</b>：把单位 1、分率（几分之几 / 百分之几）、问题圈出来。<br><span class="muted">口诀：见"的"找单位 1——"是谁的几分之几"，谁就是单位 1。</span></div></div>
+    <div class="step"><div class="n">1</div><div><b>圈一圈</b>：把单位 1、分率（几分之几）、问题圈出来。<br><span class="muted">口诀：见"的"找单位 1——"是谁的几分之几"，谁就是单位 1。</span></div></div>
     <div class="step"><div class="n">2</div><div><b>画示意图</b>：一条线段代表单位 1，先分一分，再标出已知和问号。</div></div>
     <div class="step"><div class="n">3</div><div><b>列式</b>：单位 1 已知 → 乘法；单位 1 未知 → 除法（或方程）。</div></div>
     <div class="step"><div class="n">4</div><div><b>验算</b>：把答案代回去，看看是不是正好是"几分之几"；再检查单位写没写。</div></div>
