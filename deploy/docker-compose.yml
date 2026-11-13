@@ -1,0 +1,12 @@
+services:
+  shuxueleyuan:
+    image: docker.1ms.run/library/nginx:alpine
+    container_name: shuxueleyuan
+    restart: unless-stopped
+    ports:
+      - "8766:80"
+    volumes:
+      - ./site:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    environment:
+      - TZ=Asia/Shanghai
