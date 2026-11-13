@@ -144,7 +144,7 @@ var UKEY='qd6_users';        /* 用户表 */
 var CKEY='qd6_session';      /* 当前登录会话 */
 var BKEY1='qd6_users_bak1';  /* 备份快照 1（每次写入前滚动） */
 var BKEY2='qd6_users_bak2';  /* 备份快照 2（隔次滚动，防单点损坏） */
-var ADMIN_PHONE='13800000000', ADMIN_PASS='Math@2026Q';
+var ADMIN_PHONE='13455656547', ADMIN_PASS='KAyFN&6t253Z#m2x0Fq3';
 
 /* 纯 JS SHA-256（FIPS 180-4，内置实现，兼容 http/https/file） */
 function sha256(ascii){
@@ -220,12 +220,21 @@ var CUR=null;  /* 当前登录用户 {phone,role,name} 或 null */
 try{CUR=JSON.parse(localStorage.getItem(CKEY))}catch(e){CUR=null}
 
 /* 预置管理员（仅当不存在时创建；密码哈希存储，不落明文） */
+/* 管理员迁移：若存在旧版预置管理员（13800000000 且从未有真实注册行为），自动移除 */
 (function(){
+  var changed=false;
+  /* 1. 移除旧预置管理员（13800000000，角色 admin） */
+  var legacy=USERS.users.findIndex(function(x){return x.phone==='13800000000'&&x.role==='admin'});
+  if(legacy>=0){USERS.users.splice(legacy,1);changed=true}
+  /* 2. 若旧管理员会话还挂着，清掉 */
+  try{var sess=JSON.parse(localStorage.getItem(CKEY));if(sess&&sess.phone==='13800000000'&&sess.role==='admin'){localStorage.removeItem(CKEY);CUR=null}}catch(e){}
+  /* 3. 预置新管理员 */
   if(!USERS.users.some(function(x){return x.phone===ADMIN_PHONE})){
     var salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
     USERS.users.push({phone:ADMIN_PHONE,role:'admin',name:'管理员',salt:salt,hash:hashPass(salt,ADMIN_PASS),regAt:'2026-01-01 00:00:00',lastLogin:null});
-    saveUsers(USERS);
+    changed=true;
   }
+  if(changed)saveUsers(USERS);
 })();
 
 function validPhone(p){return /^1\d{10}$/.test(p)}
