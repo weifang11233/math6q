@@ -137,14 +137,235 @@ function checkAns(q,user){
   return Math.abs(uv-cv)<1e-9;
 }
 
+/* ───────── 用户系统（注册/登录/管理员）─────────
+   存储：localStorage 永久保存 + 双备份快照防覆盖 + 管理员可导出 JSON 文件兜底
+   安全：密码不明文存储——SHA-256(随机盐 + 密码) 哈希（纯 JS 实现，兼容 http 环境） */
+var UKEY='qd6_users';        /* 用户表 */
+var CKEY='qd6_session';      /* 当前登录会话 */
+var BKEY1='qd6_users_bak1';  /* 备份快照 1（每次写入前滚动） */
+var BKEY2='qd6_users_bak2';  /* 备份快照 2（隔次滚动，防单点损坏） */
+var ADMIN_PHONE='13800000000', ADMIN_PASS='Math@2026Q';
+
+/* 纯 JS SHA-256（FIPS 180-4，内置实现，兼容 http/https/file） */
+function sha256(ascii){
+  function rightRotate(v,a){return (v>>>a)|(v<<(32-a))}
+  var mathPow=Math.pow,maxWord=mathPow(2,32),result='',words=[],asciiBitLength=ascii.length*8;
+  var hash=sha256.h=sha256.h||[],k=sha256.k=sha256.k||[],primeCounter=k.length;
+  var isComposite={};
+  for(var candidate=2;primeCounter<64;candidate++){
+    if(!isComposite[candidate]){
+      for(var i=0;i<313;i+=candidate)isComposite[i]=candidate;
+      hash[primeCounter]=(mathPow(candidate,.5)*maxWord)|0;
+      k[primeCounter++]=(mathPow(candidate,1/3)*maxWord)|0;
+    }
+  }
+  ascii+='\x80';
+  while(ascii.length%64-56)ascii+='\x00';
+  for(i=0;i<ascii.length;i++){
+    var j=ascii.charCodeAt(i);
+    if(j>>8)return;  /* 非 ASCII：外部先转 UTF-8 */
+    words[i>>2]|=j<<((3-i)%4)*8;
+  }
+  words[words.length]=(asciiBitLength/maxWord)|0;
+  words[words.length]=asciiBitLength;
+  for(j=0;j<words.length;){
+    var w=words.slice(j,j+=16),oldHash=hash;
+    hash=hash.slice(0,8);
+    for(i=0;i<64;i++){
+      var w15=w[i-15],w2=w[i-2];
+      var a=hash[0],e=hash[4];
+      var temp1=hash[7]
+        +(rightRotate(e,6)^rightRotate(e,11)^rightRotate(e,25))
+        +((e&hash[5])^((~e)&hash[6]))+k[i]
+        +(w[i]=(i<16)?w[i]:(w[i-16]+(rightRotate(w15,7)^rightRotate(w15,18)^(w15>>>3))+w[i-7]+(rightRotate(w2,17)^rightRotate(w2,19)^(w2>>>10)))|0);
+      var temp2=(rightRotate(a,2)^rightRotate(a,13)^rightRotate(a,22))+((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
+      hash=[(temp1+temp2)|0].concat(hash);
+      hash[4]=(hash[4]+temp1)|0;
+      hash[0]=temp1+temp2|0;
+    }
+    for(i=0;i<8;i++)hash[i]=(hash[i]+oldHash[i])|0;
+  }
+  for(i=0;i<8;i++){
+    for(j=3;j+1;j--){
+      var b=(hash[i]>>(j*8))&255;
+      result+=((b<16)?0:'')+b.toString(16);
+    }
+  }
+  return result;
+}
+function str2utf8(s){return decodeURIComponent(encodeURIComponent(s))}
+function hashPass(salt,pass){return sha256(str2utf8(salt+'::'+pass))}
+
+/* 用户表读写（带双备份与写入保护） */
+function loadUsers(){
+  try{var v=JSON.parse(localStorage.getItem(UKEY));if(v&&v.users)return v}catch(e){}
+  /* 主表损坏/丢失 → 尝试双备份恢复 */
+  for(var k of [BKEY1,BKEY2]){
+    try{var b=JSON.parse(localStorage.getItem(k));if(b&&b.users){console.warn('用户表从备份恢复:',k);return b}}catch(e){}
+  }
+  return {ver:2,users:[]};
+}
+function saveUsers(db){
+  /* 防覆盖：写入前把旧主表滚入备份（B1←旧值，B2←原B1） */
+  try{
+    var old=localStorage.getItem(UKEY);
+    if(old){localStorage.setItem(BKEY2,localStorage.getItem(BKEY1)||old||'');localStorage.setItem(BKEY1,old)}
+    db.savedAt=Date.now();
+    localStorage.setItem(UKEY,JSON.stringify(db));
+    return true;
+  }catch(e){console.error('用户表保存失败(存储满?)',e);return false}
+}
+var USERS=loadUsers();
+var CUR=null;  /* 当前登录用户 {phone,role,name} 或 null */
+try{CUR=JSON.parse(localStorage.getItem(CKEY))}catch(e){CUR=null}
+
+/* 预置管理员（仅当不存在时创建；密码哈希存储，不落明文） */
+(function(){
+  if(!USERS.users.some(function(x){return x.phone===ADMIN_PHONE})){
+    var salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
+    USERS.users.push({phone:ADMIN_PHONE,role:'admin',name:'管理员',salt:salt,hash:hashPass(salt,ADMIN_PASS),regAt:'2026-01-01 00:00:00',lastLogin:null});
+    saveUsers(USERS);
+  }
+})();
+
+function validPhone(p){return /^1\d{10}$/.test(p)}
+/* 密码规则：必须 10 位，同时含数字/大写/小写/特殊符号 */
+function passIssue(p){
+  if(typeof p!=='string'||p.length!==10)return '密码长度必须恰好 10 位（当前 '+(p?p.length:0)+' 位）';
+  if(!/[0-9]/.test(p))return '密码必须包含数字';
+  if(!/[A-Z]/.test(p))return '密码必须包含大写字母';
+  if(!/[a-z]/.test(p))return '密码必须包含小写字母';
+  if(!/[^0-9A-Za-z]/.test(p))return '密码必须包含特殊符号（如 !@#$%^&*）';
+  return null;
+}
+function nowStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0')}
+function findUser(phone){return USERS.users.find(function(x){return x.phone===phone})}
+function setSession(u){CUR=u;try{localStorage.setItem(CKEY,JSON.stringify(u))}catch(e){}}
+function clearSession(){CUR=null;try{localStorage.removeItem(CKEY)}catch(e){}}
+function isAdmin(){return CUR&&CUR.role==='admin'}
+
+/* 每个用户独立的学习存档键 */
+function userKey(phone){return 'qd6_state_'+phone}
+function load(){  /* 依据登录态加载对应存档 */
+  var def={name:'',lit:{},st:{},wrong:[],days:{},t0:Date.now()};
+  if(CUR){try{var v=JSON.parse(localStorage.getItem(userKey(CUR.phone)));if(v&&typeof v==='object')return v}catch(e){}return def}
+  try{var g=JSON.parse(localStorage.getItem(KEY));if(g&&typeof g==='object')return g}catch(e){}
+  return def;
+}
+function save(){try{localStorage.setItem(CUR?userKey(CUR.phone):KEY,JSON.stringify(S))}catch(e){}}
+
+/* ───────── 注册 / 登录（界面与逻辑）───────── */
+var AUTH_MODE='login';
+function doRegister(){
+  var ph=(document.getElementById('regPhone').value||'').trim();
+  var nm=(document.getElementById('regName').value||'').trim();
+  var p1=document.getElementById('regPass').value||'';
+  var p2=document.getElementById('regPass2').value||'';
+  var msg=document.getElementById('regMsg');
+  function fail(t){msg.textContent='✕ '+t}
+  if(!ph)return fail('请输入手机号');
+  if(!validPhone(ph))return fail('手机号格式不正确：必须 11 位且以 1 开头');
+  if(findUser(ph))return fail('该手机号已注册过，请直接登录');
+  var issue=passIssue(p1);
+  if(issue)return fail(issue);
+  if(p1!==p2)return fail('两次输入的密码不一致');
+  var salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
+  var user={phone:ph,role:'user',name:nm||('同学'+ph.slice(-4)),salt:salt,hash:hashPass(salt,p1),regAt:nowStr(),lastLogin:null};
+  USERS.users.push(user);
+  if(!saveUsers(USERS))return fail('保存失败：本机存储空间不足，请联系管理员导出备份清理');
+  msg.style.color='#1E8449';msg.textContent='✓ 注册成功！正在进入…';
+  setSession({phone:ph,role:'user',name:user.name});
+  S=load();S.name=user.name;save();
+  setTimeout(function(){go('home')},600);
+}
+function doLogin(){
+  var ph=(document.getElementById('logPhone').value||'').trim();
+  var p=document.getElementById('logPass').value||'';
+  var msg=document.getElementById('logMsg');
+  function fail(t){msg.textContent='✕ '+t}
+  if(!ph)return fail('请输入手机号');
+  if(!validPhone(ph))return fail('手机号格式不正确：必须 11 位且以 1 开头');
+  var u=findUser(ph);
+  if(!u)return fail('该手机号尚未注册，请先注册');
+  if(u.lockUntil&&Date.now()<u.lockUntil)return fail('密码错误次数过多，账号已锁定，请 '+Math.ceil((u.lockUntil-Date.now())/60000)+' 分钟后再试');
+  if(hashPass(u.salt,p)!==u.hash){
+    u.failN=(u.failN||0)+1;
+    if(u.failN>=5){u.lockUntil=Date.now()+10*60*1000;u.failN=0}
+    saveUsers(USERS);
+    return fail('密码不正确'+(u.lockUntil?'，已连续错 5 次，锁定 10 分钟':''));
+  }
+  u.failN=0;delete u.lockUntil;u.lastLogin=nowStr();saveUsers(USERS);
+  setSession({phone:ph,role:u.role,name:u.name});
+  S=load();save();  /* 登录即落盘，生成该用户独立存档 */
+  msg.style.color='#1E8449';msg.textContent='✓ 登录成功！';
+  setTimeout(function(){go('home')},400);
+}
+function doLogout(){
+  save();
+  clearSession();S=load();QS=null;
+  go('home');
+}
+
+/* ───────── 管理员面板 ───────── */
+function adminReport(phone){
+  var u=findUser(phone);if(!u)return;
+  var sv=null;try{sv=JSON.parse(localStorage.getItem(userKey(phone)))}catch(e){}
+  var h=`<div class="topbar"><button class="backbtn" onclick="go('admin')">‹ 面板</button><h1>📊 ${u.name} 的学习报告</h1></div>`;
+  h+=`<div class="card"><p>手机号：${u.phone}｜注册：${u.regAt}｜最近登录：${u.lastLogin||'—'}</p>`;
+  if(!sv){h+='<p class="muted">该用户还没有练习记录。</p>'}
+  else{
+    h+='<table class="rep"><tr><th>单元</th><th>练习</th><th>正确率</th></tr>';
+    UNITS.forEach(function(un){
+      var s=sv.st[un.id]||{att:0,cor:0};
+      var r=s.att?Math.round(s.cor/s.att*100):null;
+      h+=`<tr><td style="text-align:left">${un.id} ${un.name}</td><td>${s.att}</td><td>${r===null?'—':r+'%'}</td></tr>`;
+    });
+    h+='</table>';
+    var lit=0;Object.keys(sv.lit||{}).forEach(function(k){if(sv.lit[k])lit++});
+    var wrongN=(sv.wrong||[]).length;
+    var days=Object.keys(sv.days||{}).length;
+    h+=`<p style="margin-top:8px">✅ 点亮知识点：${lit} ｜ 📕 错题本：${wrongN} 道 ｜ 📅 练习天数：${days} 天</p>`;
+  }
+  h+='</div>';
+  app.innerHTML=h;
+}
+function exportUsers(){
+  var data=JSON.stringify({exportedAt:nowStr(),app:'math6q',db:USERS},null,1);
+  var blob=new Blob([data],{type:'application/json'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='math6q_users_backup_'+today().replace(/-/g,'')+'.json';
+  document.body.appendChild(a);a.click();a.remove();
+  var m=document.getElementById('admMsg');if(m)m.textContent='✓ 备份文件已导出到下载目录';
+}
+function importUsers(){
+  var f=document.getElementById('impFile').files[0];
+  var m=document.getElementById('admMsg');
+  if(!f){m.style.color='#C0392B';m.textContent='✕ 请先选择备份 JSON 文件';return}
+  var rd=new FileReader();
+  rd.onload=function(){
+    try{
+      var obj=JSON.parse(rd.result);
+      var db=obj.db||obj;
+      if(!db.users||!Array.isArray(db.users))throw new Error('格式不对');
+      /* 保护：导入前先备份当前主表 */
+      try{var old=localStorage.getItem(UKEY);if(old){localStorage.setItem(BKEY1,old)} }catch(e){}
+      USERS=loadUsers();
+      /* 合并：按手机号去重，导入的覆盖同号旧档（管理员显式操作） */
+      db.users.forEach(function(u){
+        var i=USERS.users.findIndex(function(x){return x.phone===u.phone});
+        if(i>=0)USERS.users[i]=u;else USERS.users.push(u);
+      });
+      saveUsers(USERS);
+      m.style.color='#1E8449';m.textContent='✓ 恢复完成，当前用户数：'+USERS.users.length;
+    }catch(e){m.style.color='#C0392B';m.textContent='✕ 恢复失败：'+e.message}
+  };
+  rd.readAsText(f);
+}
+
 /* ───────── 存档 ───────── */
 var KEY='qd6_state';
 var S=load();
-function load(){
-  try{var v=JSON.parse(localStorage.getItem(KEY));if(v&&typeof v==='object')return v}catch(e){}
-  return {name:'',lit:{},st:{},wrong:[],days:{},t0:Date.now()};
-}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 function dayTick(){
   var t=today();
   if(!S.days[t])S.days[t]={att:0,cor:0};
@@ -1141,21 +1362,87 @@ function go(name,arg){if(window._autoTimer){clearInterval(window._autoTimer);win
 
 var VIEWS={};
 
+VIEWS.admin=function(){
+  if(!isAdmin()){go('home');return}
+  var us=USERS.users.slice().sort(function(a,b){return (a.regAt<b.regAt)?-1:1});
+  var h=`<div class="topbar"><button class="backbtn" onclick="go('home')">‹ 首页</button><h1>🛡 管理员面板</h1></div>
+  <div class="card"><h2>👥 注册用户（${USERS.users.length}）</h2>
+  <table class="rep"><tr><th>手机号</th><th>昵称</th><th>角色</th><th>注册时间</th><th>最近登录</th><th>练习/正确</th><th>点亮</th><th>报告</th></tr>`;
+  us.forEach(function(u){
+    var st={att:0,cor:0},lit=0;
+    try{var sv=JSON.parse(localStorage.getItem(userKey(u.phone)));if(sv){st=sv.st[Object.keys(sv.st)[0]]||st;
+      var att=0,cor=0;Object.keys(sv.st||{}).forEach(function(k){att+=sv.st[k].att;cor+=sv.st[k].cor});
+      st={att:att,cor:cor};
+      Object.keys(sv.lit||{}).forEach(function(k){if(sv.lit[k])lit++});
+    }}catch(e){}
+    h+=`<tr><td>${u.phone}</td><td>${u.name}</td><td>${u.role==='admin'?'🛡 管理员':'👤 用户'}</td><td style="font-size:11px">${u.regAt}</td><td style="font-size:11px">${u.lastLogin||'—'}</td><td>${st.att}/${st.cor}</td><td>${lit}</td><td><a href="javascript:void(0)" onclick="adminReport('${u.phone}')" style="color:var(--blue)">查看</a></td></tr>`;
+  });
+  h+='</table></div>';
+  h+=`<div class="card"><h2>💾 数据保护</h2>
+    <p class="muted" style="font-size:13px">注册数据实时永久保存在本机存储，并自动保留<b>两份滚动备份</b>（主表损坏时自动恢复）。导出 JSON 文件可跨设备迁移/灾备。</p>
+    <button class="btn" style="width:100%" onclick="exportUsers()">⬇ 导出全部用户数据（JSON 备份）</button>
+    <div style="margin-top:8px"><input type="file" id="impFile" accept=".json" style="width:100%;font-size:12px"></div>
+    <button class="btn plain" style="width:100%;margin-top:8px" onclick="importUsers()">⬆ 从备份文件恢复</button>
+    <div id="admMsg" style="min-height:18px;font-size:13px;font-weight:700;color:var(--green);margin-top:6px"></div></div>`;
+  app.innerHTML=h;
+};
+
+VIEWS.auth=function(){
+  var h=`<div class="topbar"><button class="backbtn" onclick="go('home')">‹ 首页</button><h1>${AUTH_MODE==='reg'?'📝 注册新用户':'🔑 用户登录'}</h1></div>
+  <div class="card">
+    ${AUTH_MODE==='reg'
+      ?`<p class="muted">手机号注册（11 位、以 1 开头）；密码规则：<b>恰好 10 位</b>，且必须同时包含<b>数字、大写字母、小写字母、特殊符号</b>。</p>
+        <input class="ansin" id="regPhone" maxlength="11" placeholder="手机号（11 位，以 1 开头）" autocomplete="off" style="margin-bottom:8px">
+        <input class="ansin" id="regName" maxlength="12" placeholder="孩子昵称（选填）" autocomplete="off" style="margin-bottom:8px">
+        <input class="ansin" id="regPass" maxlength="10" placeholder="密码（恰好 10 位，含数字+大写+小写+特殊符号）" autocomplete="off" style="margin-bottom:8px">
+        <input class="ansin" id="regPass2" maxlength="10" placeholder="再输一遍密码确认" autocomplete="off" style="margin-bottom:10px">
+        <div id="regMsg" style="min-height:20px;font-size:13px;color:#C0392B;font-weight:700"></div>
+        <button class="btn" style="width:100%" onclick="doRegister()">注册</button>
+        <p class="muted" style="margin-top:10px">已有账号？<a href="javascript:void(0)" onclick="AUTH_MODE='login';go('auth')" style="color:var(--blue)">去登录</a></p>`
+      :`<p class="muted">用手机号和密码登录。学习进度跟着账号走，换设备登录也能继续。</p>
+        <input class="ansin" id="logPhone" maxlength="11" placeholder="手机号" autocomplete="off" style="margin-bottom:8px">
+        <input class="ansin" id="logPass" maxlength="10" type="password" placeholder="密码" autocomplete="off" style="margin-bottom:10px">
+        <div id="logMsg" style="min-height:20px;font-size:13px;color:#C0392B;font-weight:700"></div>
+        <button class="btn" style="width:100%" onclick="doLogin()">登录</button>
+        <p class="muted" style="margin-top:10px">还没有账号？<a href="javascript:void(0)" onclick="AUTH_MODE='reg';go('auth')" style="color:var(--blue)">注册一个</a></p>`}
+  </div>
+  <p class="footer-tip">注册信息永久保存在本机存储中（密码经加盐哈希，不存明文），管理员可导出备份文件。</p>`;
+  app.innerHTML=h;
+};
+
 /* —— 首页 —— */
 VIEWS.home=function(){
+  /* 登录墙：未登录只给登录/注册入口（旧游客存档保留，登录后可用） */
+  if(!CUR){
+    var g=0;try{var gg=JSON.parse(localStorage.getItem(KEY));if(gg&&gg.name)g=1}catch(e){}
+    app.innerHTML=`<div class="card">
+      <div class="bigday"><b>🙋</b><br><span class="muted">欢迎来到六上数学乐园</span></div>
+      <p style="text-align:center" class="muted">青岛版（六三制）六年级上册 · 2026 年 7 月版同步</p>
+    </div>
+    <div class="card"><h2>开始之前，先登录或注册</h2>
+      <p class="muted" style="font-size:13.5px">多用户账号体系：每个人的进度、错题本、点亮记录分开保存、<b>永久保存</b>。手机号注册，密码经加盐哈希加密存储。</p>
+      <div style="margin-top:12px"><button class="btn" style="width:100%" onclick="AUTH_MODE='login';go('auth')">🔑 登录</button></div>
+      <div style="margin-top:8px"><button class="btn orange" style="width:100%" onclick="AUTH_MODE='reg';go('auth')">📝 注册新用户</button></div>
+      <p class="muted" style="margin-top:10px;font-size:12px">管理员请用预置管理员账号登录。</p>
+      ${g?'<p class="muted" style="margin-top:4px;font-size:12px">检测到旧的游客进度，登录后仍保留在本机。</p>':''}
+    </div>
+    <p class="footer-tip">数据保存在本机 · 断网可用 · 不上传任何服务器</p>`;
+    return;
+  }
   var lit=0,total=0;
   UNITS.forEach(function(u){u.kps.forEach(function(k){total++;if(S.lit[k.id])lit++})});
   var d=dayTick();
   var h=`<div class="card">
     <div class="bigday"><b>${streak()}</b><br><span class="muted">连续练习天数 🔥</span></div>
-    <p style="text-align:center" class="muted">知识点点亮进度：${lit} / ${total}</p>
+    <p style="text-align:center" class="muted">${CUR.role==='admin'?'管理员视角':S.name?'学习者：'+S.name:'欢迎回来'}｜知识点点亮：${lit} / ${total}</p>
   </div>
   <div class="card">
-    <h2>👋 ${S.name?'你好，'+S.name:'欢迎来到六上数学乐园'}</h2>
-    <p class="muted">青岛版（六三制）六年级上册 · 2025-2026 新教材同步</p>
-    ${S.name?'':'<div style="margin-top:10px"><input class="ansin" id="nameIn" placeholder="写下你的名字或昵称" style="margin-bottom:8px"><button class="btn" onclick="setName()">开始学习</button></div>'}
-    ${S.name?`<div style="margin-top:10px"><button class="btn orange" onclick="startDaily()">▶ 今天的任务（约 10 分钟）</button></div>
-    <p class="muted" style="margin-top:6px">一张知识卡 + 五道题 + 错题重考，今天已练 ${d.att} 题</p>`:''}
+    <h2>👋 你好，${CUR.name}<small class="muted">（${CUR.phone}）</small></h2>
+    ${CUR.role==='admin'
+      ?`<div style="margin-top:10px"><button class="btn blue" style="width:100%" onclick="go('admin')">🛡 进入管理员面板（用户管理 / 学习报告 / 数据备份）</button></div>`
+      :`<div style="margin-top:10px"><button class="btn orange" onclick="startDaily()">▶ 今天的任务（约 10 分钟）</button></div>
+    <p class="muted" style="margin-top:6px">一张知识卡 + 五道题 + 错题重考，今天已练 ${d.att} 题</p>`}
+    <div style="margin-top:10px"><button class="btn plain" onclick="doLogout()">🚪 退出登录</button></div>
   </div>
   <div class="grid2">
     <div class="modbtn" onclick="go('units')">📚 按单元学<small>一单元一单元点亮</small></div>
@@ -1172,9 +1459,9 @@ VIEWS.home=function(){
   <p class="footer-tip">数据保存在本机 · 断网可用 · 把本文件发到孩子设备浏览器打开即可</p>`;
   app.innerHTML=h;
 };
-function setName(){
-  var v=document.getElementById('nameIn').value.trim();
-  if(!v)return;S.name=v.slice(0,12);save();go('home');
+function setName(){  /* 兼容保留：登录用户改名 */
+  var v=document.getElementById('nameIn')?document.getElementById('nameIn').value.trim():'';
+  if(!v||!CUR)return;S.name=v.slice(0,12);save();go('home');
 }
 
 /* —— 按单元学 —— */
@@ -1639,8 +1926,9 @@ function startFourDrill(){
 
 /* —— 家长报告 —— */
 VIEWS.report=function(){
+  if(!CUR){go('home');return}
   var h=`<div class="topbar"><button class="backbtn" onclick="go('home')">‹ 首页</button><h1>📊 学习报告</h1></div>
-  <div class="card"><h2>${S.name||'孩子'}的进度</h2><table class="rep"><tr><th>单元</th><th>练习</th><th>正确率</th><th>状态</th></tr>`;
+  <div class="card"><h2>${CUR.name}（${CUR.phone}）的进度</h2><table class="rep"><tr><th>单元</th><th>练习</th><th>正确率</th><th>状态</th></tr>`;
   UNITS.forEach(function(u){
     var s=S.st[u.id]||{att:0,cor:0};
     var r=s.att?Math.round(s.cor/s.att*100):null;
