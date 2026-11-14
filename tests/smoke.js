@@ -77,7 +77,7 @@ chk('未登录显示登录/注册入口', app.innerHTML.includes('注册新用�
 chk('皮肤 CSS 覆盖层存在且位于 </style> 前',
   html.includes('童趣设计系统 · 全局覆盖层') && html.indexOf('童趣设计系统') < html.indexOf('</style>'));
 chk('皮肤关键动画/配色生效声明', html.includes('@keyframes floaty') && html.includes('--bg:#DFF3FF'));
-chk('版本标记 v2.4.2-childlike-cloud', html.includes('content="v2.4.2-childlike-cloud"'));
+chk('版本标记 v2.4.3-childlike-cloud', html.includes('content="v2.4.3-childlike-cloud"'));
 chk('存量本地账号升级上云逻辑存在', html.includes('升级为云端账号') && html.includes('检测到本机存量账号'));
 chk('v2.4 云端同步层存在', ['CLOUD','cloudProbe','cloudLogin','cloudRegister','cloudSaveState','mergeState','cloudMaybeMigrate','adminAddUser','adminResetPass','adminDoDel','aiMigrateToProxy']
   .every(k => html.includes(k)));
@@ -181,11 +181,18 @@ chk('默认代理配置即可判分就绪（无需填 Key）', sandbox.isAIReady
 chk('备用模型列表 10 个（含视觉模型）', sandbox.AI_MODELS.length === 10 && sandbox.AI_MODELS.filter(m => m.d.includes('👁')).length >= 5);
 
 sandbox.lsRm('qd6_ai');
-chk('未配置时 getAIcfg 返回 null', sandbox.getAIcfg() === null);
+chk('未配置时 getAIcfg 返回内置代理默认（开箱即用）', sandbox.getAIcfg().endpoint === EP && sandbox.getAIcfg().key === '');
 sandbox.lsSet('qd6_ai', '{坏JSON');
-chk('AI 配置损坏时不抛异常、返回 null', sandbox.getAIcfg() === null);
+chk('AI 配置损坏时不抛异常、回退代理默认', sandbox.getAIcfg().endpoint === EP);
 sandbox.lsRm('qd6_ai');
-chk('AI 配置清空后返回 null', sandbox.getAIcfg() === null);
+chk('AI 配置清空后回退代理默认', sandbox.getAIcfg().endpoint === EP);
+/* v2.4.3 地址归一化自愈 */
+sandbox.lsSet('qd6_ai', JSON.stringify({ endpoint: 'http://192.168.31.88:3201/ai/chat/completions', model: 'm', key: 'k' }));
+const healed = sandbox.getAIcfg();
+chk('误拼网关地址被自愈为同源代理并落盘', healed.endpoint === EP && (JSON.parse(sandbox.lsGet('qd6_ai'))).endpoint === EP);
+sandbox.lsSet('qd6_ai', JSON.stringify({ endpoint: '/ai/chat/completions', model: 'm', key: '' }));
+chk('相对地址保持不变', sandbox.getAIcfg().endpoint === EP);
+sandbox.lsRm('qd6_ai');   /* 复位：面板区从「未保存配置」状态开始 */
 
 /* isAIReady / aiHeaders 边界 */
 chk('isAIReady 空值边界全 false', [null, undefined, {}, { endpoint: EP }, { model: 'm' }]
@@ -196,12 +203,12 @@ chk('aiHeaders 代理模式不带 Authorization', !('Authorization' in sandbox.a
 chk('aiHeaders 直连模式带 Bearer', sandbox.aiHeaders({ key: TEST_KEY }).Authorization === 'Bearer ' + TEST_KEY);
 chk('aiHeaders 空配置不抛异常', Object.keys(sandbox.aiHeaders(null)).length === 1);
 
-/* 管理员面板：首次配置引导 + Key 绝不回显明文 */
+/* 管理员面板：代理模式提示 + Key 绝不回显明文 */
 sandbox.CUR = { phone: '13455656547', role: 'admin', name: '管理员' };
 sandbox.go('admin');
-chk('首次打开显示「首次配置」引导', app.innerHTML.includes('首次配置') && app.innerHTML.includes('不会随页面下发'));
-chk('首次打开 AI 设置面板不含任何 Key', !app.innerHTML.includes(TEST_KEY) && E('aiKey').value === '');
-chk('首次打开预填推荐接口与模型', E('aiEndpoint').value === EP && E('aiModel').value === 'qwen2.5-vl-72b');
+chk('打开面板含 AI 判分设置区', app.innerHTML.includes('AI 判分设置') && app.innerHTML.includes('/ai/chat/completions'));
+chk('面板不含任何 Key 明文', !app.innerHTML.includes(TEST_KEY) && E('aiKey').value === '');
+chk('预填推荐接口与模型', E('aiEndpoint').value === EP && E('aiModel').value === 'qwen2.5-vl-72b');
 
 /* 真实走保存函数 */
 E('aiEndpoint').value = EP;
@@ -231,20 +238,18 @@ chk('代理模式请求头无 Authorization', !('Authorization' in sandbox.aiHea
 sandbox.go('admin');
 chk('代理模式面板标注正确', app.innerHTML.includes('服务端代理模式'));
 
-/* 清空全部配置 → 回到首次配置 */
+/* 清空全部配置 → getAIcfg 回退代理默认（v2.4.3 起永有默认配置） */
 sandbox.resetAIcfg();
-chk('resetAIcfg 清空配置', sandbox.getAIcfg() === null && sandbox.lsGet('qd6_ai') === null);
-chk('清空后面板回到首次配置引导', app.innerHTML.includes('首次配置'));
+chk('resetAIcfg 清空存储', sandbox.lsGet('qd6_ai') === null);
+chk('清空后判分仍可用（代理默认）', sandbox.getAIcfg().endpoint === EP);
 
-/* 未配置时判分降级（不联网、不抛异常） */
-let gradeRes = null;
-sandbox.gradeAnswer({ q: '应用题', ans: '42', app: true }, '先算每份，再相乘，思路是对的', r => { gradeRes = r; });
-chk('gradeAnswer 未配置时降级且提示管理员配置', !!gradeRes && gradeRes.correct === false && gradeRes.feedback.includes('未配置'));
-let photoRes = null;
-sandbox.gradePhoto({ q: '应用题', ans: '42' }, '', 'data:image/jpeg;base64,AAA', r => { photoRes = r; });
-chk('gradePhoto 未配置时降级不调用网络', !!photoRes && photoRes.correct === false && photoRes.feedback.includes('未配置'));
+/* 判分走默认代理配置（gradeAnswer/gradePhoto 回调是异步 promise 链，先收集、延后断言） */
+sandbox.CUR = { phone: '13455656547', role: 'admin', name: '管理员' };  /* admin 全权限，越过 hasPerm */
+const gradeResults = { answer: null, photo: null };
+sandbox.gradeAnswer({ q: '应用题', ans: '42', app: true }, '先算每份，再相乘，思路是对的', r => { gradeResults.answer = r; });
+sandbox.gradePhoto({ q: '应用题', ans: '42' }, '', 'data:image/jpeg;base64,AAA', r => { gradeResults.photo = r; });
 sandbox.testAI();
-chk('testAI 未配置时提示先保存配置', E('aiMsg').textContent.includes('请先'));
+chk('testAI 默认代理配置直接可测', E('aiMsg').textContent.length > 0);
 chk('导出用户备份不含 AI 配置', sandbox.exportUsers.toString().indexOf('qd6_ai') === -1
   && sandbox.exportUsers.toString().indexOf('AIKEY') === -1);
 
@@ -267,5 +272,14 @@ let degErr = null;
 try { sandbox.LS_OK = false; sandbox.go('home'); } catch (e) { degErr = e; }
 chk('localStorage 清空后降级不崩溃', !degErr, degErr && degErr.message);
 
-console.log('\n结果: ' + pass + ' 通过 / ' + fail + ' 失败');
-process.exit(fail ? 1 : 0);
+/* v2.4.3：异步判分断言（gradeAnswer/gradePhoto 回调走 promise 链，等 microtask 完成后统一收尾） */
+setTimeout(() => {
+  chk('gradeAnswer 未保存配置也尝试 AI 判分（默认代理）',
+    !!gradeResults.answer && String(gradeResults.answer.feedback || '').indexOf('未配置') === -1,
+    JSON.stringify(gradeResults.answer));
+  chk('gradePhoto 未保存配置也走 AI（默认代理）',
+    !!gradeResults.photo && String(gradeResults.photo.feedback || '').indexOf('未配置') === -1,
+    JSON.stringify(gradeResults.photo));
+  console.log('\n结果: ' + pass + ' 通过 / ' + fail + ' 失败');
+  process.exit(fail ? 1 : 0);
+}, 150);

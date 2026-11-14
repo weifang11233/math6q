@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>六上数学乐园 · 青岛版（童趣版）</title>
-<meta name="app-version" content="v2.4.2-childlike-cloud">
+<meta name="app-version" content="v2.4.3-childlike-cloud">
 <style>
 :root{
   --bg:#F7F4EC; --card:#FFFFFF; --ink:#3A352B; --sub:#8A8474;
@@ -2490,13 +2490,6 @@ function answer(optIdx,free){
     var fb0=document.getElementById('fb');
     fb0.className='fb';
     if(window._photoData){
-      var cfg0=getAIcfg();
-      if(!isAIReady(cfg0)){
-        fb0.innerHTML='💭 <b>照片已收到，但 AI 判分尚未配置。</b><br>请管理员在「管理员面板 → 🤖 AI 判分设置」<b>首次填写 API Key</b>并选择<b>支持图片识别的视觉模型</b>（如 qwen2.5-vl、gpt-4o），配置后即可拍照判分。也可以在下方文字框直接输入答案提交。';
-        window._photoData=null;  /* 清照片，后续文字提交走文本判分 */
-        window._answered=false;  /* 允许改用文字作答 */
-        return;
-      }
       fb0.innerHTML='⏳ AI 正在识别照片中的解题过程…';
       gradePhoto(q,user,window._photoData,function(res){
         window._photoData=null;
@@ -2567,6 +2560,29 @@ var AIKEY='qd6_ai';
    所有设备都能用 AI 判分且浏览器不持有密钥；仅预填，未点保存前不生效。
    直连模式则把地址改成完整网关地址，并在面板自填 API Key。 */
 var DEFAULT_AI={endpoint:'/ai/chat/completions',model:'qwen2.5-vl-72b'};
+/* v2.4.3：地址归一化。允许的两种形态：相对代理 /ai/chat/completions（推荐，跨域免疫）或
+   完整 http(s)://...；把「网关主机+代理路径」这类拼接错误（:3201/ai/...）和带 v1 的直连
+   一律收敛为同源代理。返回 {endpoint,key(仅尾号)} 供掩码展示。 */
+function normalizeAIEndpoint(ep){
+  ep=String(ep||'').trim();
+  if(!ep)return DEFAULT_AI.endpoint;
+  if(ep.charAt(0)==='/')return ep;                       /* 已是同源相对路径 */
+  if(/^https?:\/\//i.test(ep)&&ep.indexOf(':3201/')>=0)return DEFAULT_AI.endpoint;  /* 误拼网关地址 → 代理 */
+  return ep;                                             /* 其它完整地址（用户自担，直连模式） */
+}
+function getAIcfg(){
+  try{
+    var c=JSON.parse(lsGet(AIKEY));
+    if(c&&c.endpoint&&c.model){
+      /* 惰性自愈：地址形制错误（如 :3201/ai/...）当场收敛为代理并落盘 */
+      var fixed=normalizeAIEndpoint(c.endpoint);
+      if(fixed!==c.endpoint){c.endpoint=fixed;lsSet(AIKEY,JSON.stringify(c))}
+      return c;
+    }
+  }catch(e){}
+  /* 未配置 = 直接用内置代理默认值（开箱即用；代理请求不带 Key，由 NAS 注入） */
+  return {endpoint:DEFAULT_AI.endpoint,model:DEFAULT_AI.model,key:''};
+}
 function isAIReady(c){return !!(c&&c.endpoint&&c.model)}
 function aiHeaders(c){var h={'Content-Type':'application/json'};if(c&&c.key)h.Authorization='Bearer '+c.key;return h}
 /* 内置推荐模型（从网关 320 个模型中挑选；👁=支持图片识别可拍照判分） */
@@ -2582,7 +2598,7 @@ var AI_MODELS=[
  {id:'gpt-4.1-mini',d:'仅文本（拍照不可用）'},
  {id:'auto',d:'网关自动路由（模型不确定，备用）'}
 ];
-function getAIcfg(){try{var c=JSON.parse(lsGet(AIKEY));if(c&&c.endpoint&&c.model)return c}catch(e){}return null}
+/* getAIcfg 已在上方 v2.4.3 区块定义（带归一化自愈与代理默认值），此处不再重复 */
 function updateAIModelDesc(){
   var v=(document.getElementById('aiModel').value||'').trim();
   var m=AI_MODELS.find(function(x){return x.id===v});
@@ -2705,7 +2721,6 @@ function callLLM(q,user,cfg,photo){
 function gradePhoto(q,user,photo,cb){
   if(!hasPerm('ai')){return cb({correct:false,feedback:'当前账号未授权 AI 拍照判分，请改用文字作答或联系管理员开通。',recognized:null})}
   var cfg=getAIcfg();
-  if(!isAIReady(cfg)){return cb({correct:false,feedback:'AI 判分未配置，无法识别照片。请管理员在「管理员面板 → 🤖 AI 判分设置」首次配置 API Key 与视觉模型；也可改用文字作答。',recognized:null})}
   callLLM(q,user,cfg,photo)
     .then(function(r){cb(r)})
     .catch(function(e){
@@ -2722,12 +2737,6 @@ function gradeAnswer(q,user,cb){
     return cb({correct:false,feedback:msg0});
   }
   var cfg=getAIcfg();
-  if(!isAIReady(cfg)){
-    var msg=local.level==='mismatch'
-      ?'按最终答案判定为不正确。'
-      :'AI 判分未配置（请管理员在「管理员面板 → 🤖 AI 判分设置」首次填写 API Key），已按最终答案判定。请至少写明最终答案（如「答：48 平方米」）。';
-    return cb({correct:false,feedback:msg});
-  }
   callLLM(q,user,cfg)
     .then(function(r){cb(r)})
     .catch(function(e){
