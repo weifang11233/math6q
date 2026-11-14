@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>六上数学乐园 · 青岛版（童趣版）</title>
-<meta name="app-version" content="v2.4.3-childlike-cloud">
+<meta name="app-version" content="v2.4.4-childlike-cloud">
 <style>
 :root{
   --bg:#F7F4EC; --card:#FFFFFF; --ink:#3A352B; --sub:#8A8474;
@@ -800,25 +800,43 @@ function grantAllPerms(){
   PERM_LIST.forEach(function(p){var el=document.getElementById('perm_'+p.mod);if(el)el.checked=true});
   permChanged=true;
 }
+/* v2.4.4 学习报告：云端模式从服务端拉真实存档统计（本地模式读本机缓存） */
 function adminReport(phone){
+  if(CLOUD.on){
+    app.innerHTML='<div class="topbar"><button class="backbtn" onclick="go(\'admin\')">‹ 面板</button><h1>📊 学习报告</h1></div><div class="card"><p class="muted">… 正在从云端读取练习数据…</p></div>';
+    cloudAdminReq('/admin/users','GET').then(function(r){
+      var u=r.ok?(r.users||[]).find(function(x){return x.phone===phone}):null;
+      if(!u){go('admin');return}
+      renderAdminReport(u,{lit:u.stat.lit,wrong:u.stat.wrong,days:u.stat.days,st:null});
+    });
+    return;
+  }
   var u=findUser(phone);if(!u)return;
   var sv=null;try{sv=JSON.parse(lsGet(userKey(phone)))}catch(e){}
+  var lit=0;Object.keys((sv&&sv.lit)||{}).forEach(function(k){if(sv.lit[k])lit++});
+  renderAdminReport(u,sv?{lit:lit,wrong:(sv.wrong||[]).length,days:Object.keys(sv.days||{}).length,st:sv.st}:{st:null,lit:0,wrong:0,days:0});
+}
+function renderAdminReport(u,agg){
   var h=`<div class="topbar"><button class="backbtn" onclick="go('admin')">‹ 面板</button><h1>📊 ${u.name} 的学习报告</h1></div>`;
   h+=`<div class="card"><p>手机号：${u.phone}｜注册：${u.regAt}｜最近登录：${u.lastLogin||'—'}</p>`;
-  if(!sv){h+='<p class="muted">该用户还没有练习记录。</p>'}
-  else{
+  if(agg.st===null&&agg.lit===0&&agg.wrong===0&&(agg.days===0)){h+='<p class="muted">该用户还没有练习记录。</p>'}
+  if(agg.st!==null){
     h+='<table class="rep"><tr><th>单元</th><th>练习</th><th>正确率</th></tr>';
     UNITS.forEach(function(un){
-      var s=sv.st[un.id]||{att:0,cor:0};
+      var s=agg.st[un.id]||{att:0,cor:0};
       var r=s.att?Math.round(s.cor/s.att*100):null;
       h+=`<tr><td style="text-align:left">${un.id} ${un.name}</td><td>${s.att}</td><td>${r===null?'—':r+'%'}</td></tr>`;
     });
     h+='</table>';
-    var lit=0;Object.keys(sv.lit||{}).forEach(function(k){if(sv.lit[k])lit++});
-    var wrongN=(sv.wrong||[]).length;
-    var days=Object.keys(sv.days||{}).length;
-    h+=`<p style="margin-top:8px">✅ 点亮知识点：${lit} ｜ 📕 错题本：${wrongN} 道 ｜ 📅 练习天数：${days} 天</p>`;
+  }else{
+    /* 云端简报：服务端只回汇总（att/cor/lit/wrong/days），按单元明细列 0 占位说明 */
+    h+='<table class="rep"><tr><th>单元</th><th>练习</th><th>正确率</th></tr>';
+    UNITS.forEach(function(un){
+      h+=`<tr><td style="text-align:left">${un.id} ${un.name}</td><td>—</td><td>—</td></tr>`;
+    });
+    h+='</table>';
   }
+  h+=`<p style="margin-top:8px">✅ 点亮知识点：${agg.lit} ｜ 📕 错题本：${agg.wrong} 道 ｜ 📅 练习天数：${agg.days} 天</p>`;
   h+='</div>';
   app.innerHTML=h;
 }
@@ -1856,7 +1874,8 @@ var app=document.getElementById('app');
    - 存档读写走乐观锁 rev：提交带 rev，冲突 409 时拉云端最新合并重试
    - 管理员账号管理（新增/编辑/重置密码/封禁/删除）全部服务端鉴权
    NAS 不可达自动回退 localStorage 本地模式（功能不变）。 */
-var CLOUD={on:false,base:'',token:null,ready:false,rev:{},migrating:false};
+var CLOUD={on:false,base:'',token:null,ready:false,rev:{},migrating:false,me:null};
+var CLOUD_ME=null;   /* /whoami 缓存的本人云端账号事实（perms/banned/role） */
 try{CLOUD.token=JSON.parse(lsGet('qd6_cloud_tok'))}catch(e){CLOUD.token=null}
 function cloudSaveTok(){if(CLOUD.token)lsSet('qd6_cloud_tok',JSON.stringify(CLOUD.token));else lsRm('qd6_cloud_tok')}
 function cloudBase(){
@@ -1882,8 +1901,11 @@ function cloudProbe(){
       /* 恢复会话：token 有效则拉 whoami 重建登录态 */
       if(CLOUD.token&&CLOUD.token.t){
         return cloudFetch('/whoami',{method:'GET'}).then(function(w){
-          if(w.code===200&&w.body.ok){CUR={phone:w.body.user.phone,role:w.body.user.role,name:w.body.user.name,cloud:true};try{lsSet(CKEY,JSON.stringify(CUR))}catch(e){}}
-          else{CLOUD.token=null;cloudSaveTok()}
+          if(w.code===200&&w.body.ok){
+            CLOUD_ME={phone:w.body.user.phone,role:w.body.user.role,name:w.body.user.name,perms:w.body.user.perms||null,banned:!!w.body.user.banned,banReason:w.body.user.banReason||null};
+            CUR={phone:w.body.user.phone,role:w.body.user.role,name:w.body.user.name,cloud:true};
+            try{lsSet(CKEY,JSON.stringify(CUR))}catch(e){}
+          }else{CLOUD.token=null;cloudSaveTok()}
         }).catch(function(){CLOUD.token=null;cloudSaveTok()});
       }
     }
@@ -1989,7 +2011,15 @@ var PERM_LIST=[
 ];
 /* 导航名 → 权限模块（quiz 属于触发它的模块，不单独限权） */
 var PERM_ROUTE={units:'units',unit:'units',gen:'gen',wrong:'wrong',place:'place',map:'map',board:'board',cheat:'cheat',four:'four',report:'report'};
-function curUser(){return CUR?findUser(CUR.phone):null}  /* 实时取用户最新状态（含封禁/权限） */
+function curUser(){
+  if(!CUR)return null;
+  /* v2.4.4 云端模式：账号事实以服务端为准（缓存镜像由 /whoami 刷新） */
+  if(CUR.cloud){
+    if(CUR.role==='admin')return {phone:CUR.phone,role:'admin',name:CUR.name};
+    return CLOUD_ME||(findUser(CUR.phone)||{phone:CUR.phone,role:'user',name:CUR.name});
+  }
+  return findUser(CUR.phone);
+}
 function hasPerm(mod){
   var u=curUser();
   if(!u)return false;
@@ -2007,6 +2037,24 @@ function go(name,arg){
   if(window._autoTimer){clearInterval(window._autoTimer);window._autoTimer=null}
   /* 管理员视图保护：普通用户不可达 */
   if((name==='admin'||name==='userAdmin')&&!isAdmin()){CUR=CUR;window.scrollTo(0,0);VIEWS.noPerm();return}
+  /* v2.4.4 云端模式：封禁/权限以服务端为准，操作后重新拉取（「及时生效」） */
+  if(CUR&&CUR.cloud){
+    return cloudFetch('/whoami',{method:'GET'}).then(function(w){
+      if(w.code===200&&w.body.ok){
+        CLOUD_ME={phone:w.body.user.phone,role:w.body.user.role,name:w.body.user.name,perms:w.body.user.perms||null,banned:!!w.body.user.banned,banReason:w.body.user.banReason||null};
+        CUR={phone:w.body.user.phone,role:w.body.user.role,name:w.body.user.name,cloud:true};
+        try{lsSet(CKEY,JSON.stringify(CUR))}catch(e){}
+        if(CLOUD_ME.banned){window.scrollTo(0,0);VIEWS.bannedView(CLOUD_ME);return}
+        window.scrollTo(0,0);VIEWS[name](arg);
+      }else{
+        CUR=null;CLOUD.token=null;cloudSaveTok();S=load();
+        window.scrollTo(0,0);VIEWS.home();
+      }
+    }).catch(function(){
+      /* 网络抖动：沿用缓存事实放行，不做离线误踢 */
+      window.scrollTo(0,0);VIEWS[name](arg);
+    });
+  }
   /* 封禁检查：实时读用户表，封禁后即使在线也会被踢出 */
   var cu=CUR?findUser(CUR.phone):null;
   if(cu&&cu.banned){
@@ -2039,28 +2087,41 @@ VIEWS.noPerm=function(){
     <div style="text-align:center;margin-top:12px"><button class="btn" onclick="go('home')">← 返回首页</button></div>`;
 };
 
+/* v2.4.4 用户管理详情：云端模式先拉该账号云端事实再渲染（报告/权限/封禁都可点开） */
 VIEWS.userAdmin=function(phone){
   if(!isAdmin()){showNoPerm();return}
+  if(CLOUD.on){
+    app.innerHTML='<div class="topbar"><button class="backbtn" onclick="go(\'admin\')">‹ 面板</button><h1>⚙ 用户管理</h1></div><div class="card"><p class="muted">… 正在读取账号信息…</p></div>';
+    adminListData().then(function(d){
+      var u=d.users.find(function(x){return x.phone===phone});
+      if(!u){go('admin');return}
+      renderUserAdmin(u,true);
+    });
+    return;
+  }
   var u=findUser(phone);
   if(!u||u.role==='admin'){go('admin');return}
+  renderUserAdmin({phone:u.phone,name:u.name,role:u.role,perms:u.perms,banned:u.banned,banReason:u.banReason,regAt:u.regAt,lastLogin:u.lastLogin,stat:{att:null,cor:null,lit:null}},false);
+};
+function renderUserAdmin(u,cloud){
   var perms=u.perms||{};
   var h=`<div class="topbar"><button class="backbtn" onclick="go('admin')">‹ 面板</button><h1>⚙ 用户管理</h1></div>
   <div class="card"><h2>${u.name}（${u.phone}）</h2>
-    <p class="muted" style="font-size:13px">注册：${u.regAt}｜最近登录：${u.lastLogin||'—'}</p>
+    <p class="muted" style="font-size:13px">注册：${u.regAt}｜最近登录：${u.lastLogin||'—'}${cloud?'｜<a href="javascript:void(0)" onclick="adminReport(\''+u.phone+'\')" style="color:var(--blue)">📊 查看学习报告</a>':''}</p>
     <p style="font-size:14px">状态：${u.banned?'<b style="color:#C0392B">⛔ 已封禁'+(u.banReason?'（'+u.banReason+'）':'')+'</b>':'<b style="color:#1E8449">✅ 正常</b>'}</p></div>`;
   /* 封禁/解封 */
   h+=`<div class="card"><h2>${u.banned?'🔓 解封账号':'⛔ 封禁账号'}</h2>`;
   if(!u.banned){
     h+=`<p class="muted" style="font-size:13px">封禁后该账号立即被踢出，无法登录；学习数据完整保留，解封后可继续。</p>
       <input class="ansin" id="banReason" placeholder="封禁原因（选填，如：连续三天未完成作业）" style="margin-bottom:10px;font-size:13px">
-      <button class="btn" style="width:100%;background:#C0392B;border-color:#C0392B" onclick="doBan('${phone}')">⛔ 确认封禁</button>`;
+      <button class="btn" style="width:100%;background:#C0392B;border-color:#C0392B" onclick="doBan('${u.phone}')">⛔ 确认封禁</button>`;
   }else{
-    h+=`<button class="btn" style="width:100%" onclick="doUnban('${phone}')">🔓 解除封禁</button>`;
+    h+=`<button class="btn" style="width:100%" onclick="doUnban('${u.phone}')">🔓 解除封禁</button>`;
   }
   h+='</div>';
   /* 模块授权 */
   h+=`<div class="card"><h2>🔑 功能模块授权</h2>
-    <p class="muted" style="font-size:13px">取消勾选 = 该账号首页隐藏此模块且无法进入（AI 判分关闭后应用题只按最终答案判分）。全部勾选 = 全功能。</p>
+    <p class="muted" style="font-size:13px">取消勾选 = 该账号首页隐藏此模块且无法进入（AI 判分关闭后应用题只按最终答案判分）。全部勾选 = 全功能。${cloud?'保存后立即生效：该账号下次操作即按新权限执行。':''}</p>
     <div id="permBox">`;
   PERM_LIST.forEach(function(p){
     var on=perms[p.mod]!==false;
@@ -2070,7 +2131,7 @@ VIEWS.userAdmin=function(phone){
       <span style="margin-left:auto;font-size:11px;color:var(--sub)">${p.mod}</span></label>`;
   });
   h+=`</div>
-    <button class="btn" style="width:100%;margin-top:10px" onclick="savePerms('${phone}')">💾 保存授权</button>
+    <button class="btn" style="width:100%;margin-top:10px" onclick="savePerms('${u.phone}')">💾 保存授权</button>
     <button class="btn plain" style="width:100%;margin-top:8px" onclick="grantAllPerms()">✅ 全部勾选（恢复全功能）</button>
     <div id="permMsg" style="min-height:18px;font-size:13px;font-weight:700;color:var(--green);margin-top:6px"></div></div>`;
   permChanged=false;
