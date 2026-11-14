@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>六上数学乐园 · 青岛版（童趣版）</title>
-<meta name="app-version" content="v2.4.5-childlike-cloud">
+<meta name="app-version" content="v2.4.6-childlike-cloud">
 <style>
 :root{
   --bg:#F7F4EC; --card:#FFFFFF; --ink:#3A352B; --sub:#8A8474;
@@ -508,10 +508,71 @@ function userKey(phone){return 'qd6_state_'+phone}
    cloudLoadState 在登录/启动时异步拉云端覆盖；save() 本地落盘后异步推云端（乐观锁+冲突合并）。
    未登录游客与 NAS 不可达时行为与 v2.3 完全一致。 */
 function load(){  /* 依据登录态加载对应存档 */
-  var def={name:'',lit:{},st:{},wrong:[],days:{},t0:Date.now()};
-  if(CUR){try{var v=JSON.parse(lsGet(userKey(CUR.phone)));if(v&&typeof v==='object')return v}catch(e){}return def}
-  try{var g=JSON.parse(lsGet(KEY));if(g&&typeof g==='object')return g}catch(e){}
-  return def;
+  var def={name:'',lit:{},st:{},wrong:[],days:{},t0:Date.now(),recent:[]};
+  function compat(v){  /* v2.4.6 向后兼容：旧存档缺 recent 时补空数组，原字段一律不动 */
+    if(v&&typeof v==='object'){
+      if(!Array.isArray(v.recent))v.recent=[];
+      return v;
+    }
+    return def;
+  }
+  if(CUR){try{var v=JSON.parse(lsGet(userKey(CUR.phone)));return compat(v)}catch(e){}return compat(def)}
+  try{var g=JSON.parse(lsGet(KEY));return compat(g)}catch(e){}
+  return compat(def);
+}
+/* v2.4.6 题面指纹去重：S.recent 滚动记录最近 300 条题面（含数字，天然区分参数组合）。
+   组题时优先抽没做过的；池太小（如应用题特训）不足时按序补齐，保证永远有题可出。 */
+var RECENT_MAX=300;
+function rememberQ(qq){
+  if(!Array.isArray(S.recent))S.recent=[];
+  var i=S.recent.indexOf(qq);
+  if(i>=0)S.recent.splice(i,1);      /* 已存在则移到尾部（刷新"最近做过"） */
+  S.recent.push(qq);
+  while(S.recent.length>RECENT_MAX)S.recent.shift();
+}
+function dedupPick(genFn,n){
+  /* genFn():返回候选规格数组；返回 n 个 makeQ 前的规格，优先未做过的题面。
+     策略：先严格排除 recent+组内重复；若池形态太少抽不满，退一步「放宽 recent、仅组内去重」；
+     再不够则允许组内重复补满（保证永远有题可出，如应用题特训小池）。 */
+  var out=[],used={},tries=0,maxTries=n*30;
+  var cache={};
+  function peek(spec){
+    var key=spec.g+'|'+spec.u+'|'+spec.k;
+    if(!(key in cache))cache[key]=makeQ(spec).q;
+    return cache[key];
+  }
+  while(out.length<n&&tries<maxTries){
+    tries++;
+    var pool=genFn();
+    if(!pool||!pool.length)break;
+    var spec=pick(pool);
+    var q=peek(spec);
+    if(S.recent.indexOf(q)>=0)continue;          /* 近期做过 → 跳过 */
+    if(used[q])continue;                          /* 本组内去重 */
+    used[q]=1;out.push(spec);
+  }
+  /* 池形态不足：放宽 recent（允许做过），仅组内去重补满 */
+  if(out.length<n){
+    var guard=0;
+    while(out.length<n&&guard<n*30){
+      guard++;
+      var pool2=genFn();
+      if(!pool2||!pool2.length)break;
+      var spec2=pick(pool2);
+      var q2=peek(spec2);
+      if(used[q2])continue;
+      used[q2]=1;out.push(spec2);
+    }
+  }
+  /* 极端小池（形态数 < n）：允许组内重复，直接补满 */
+  if(out.length<n){
+    var g3=0,base=out.slice();
+    while(out.length<n&&g3<n*10){
+      g3++;
+      out.push(base[g3%base.length]);
+    }
+  }
+  return out;
 }
 var _saveTimer=null;
 function save(){
@@ -1962,7 +2023,14 @@ function cloudSaveState(phone,data){
 /* 两设备进度合并：以字段级最大值为主，days/st/累计类取并集最大，wrong 按 id 去重拼接 */
 function mergeState(a,b){
   a=a||{};b=b||{};
-  var out={name:b.name||a.name||'',t0:a.t0||b.t0||Date.now(),lit:{},st:{},wrong:[],days:{}};
+  var out={name:b.name||a.name||'',t0:a.t0||b.t0||Date.now(),lit:{},st:{},wrong:[],days:{},recent:[]};
+  /* v2.4.6 recent 合并：两设备指纹并集，保序取尾部 300 */
+  var recA=Array.isArray(a.recent)?a.recent:[],recB=Array.isArray(b.recent)?b.recent:[];
+  var seenR={},mergedR=[];
+  recA.concat(recB).forEach(function(q){
+    if(q&&typeof q==='string'&&!seenR[q]){seenR[q]=1;mergedR.push(q)}
+  });
+  out.recent=mergedR.slice(-300);
   var litA=a.lit||{},litB=b.lit||{};
   Object.keys(litB).forEach(function(k){if(litB[k])out.lit[k]=true});
   Object.keys(litA).forEach(function(k){if(litA[k])out.lit[k]=true});
@@ -2410,16 +2478,13 @@ function startGen(){
   if(!permGate('gen'))return;
   var u=window._gu,lv=window._gl;
   function refill(){
-    if(lv===0)return mixPool(u,10).map(makeQ);
-    var pool=genPool(u||null,lv),specs=[];
-    for(var i=0;i<10;i++){specs.push(pick(pool.length?pool:genPool(u||null,0)))}
-    return specs.map(makeQ);
+    if(lv===0)return dedupPick(function(){return mixPool(u,10)},10).map(makeQ);
+    return dedupPick(function(){return genPool(u||null,lv).length?genPool(u||null,lv):genPool(u||null,0)},10).map(makeQ);
   }
-  if(lv===0){startQuiz(mixPool(u,10).map(makeQ),'gen','智能出题',refill)}
+  if(lv===0){startQuiz(dedupPick(function(){return mixPool(u,10)},10).map(makeQ),'gen','智能出题',refill)}
   else{
-    var pool=genPool(u||null,lv),specs=[];
-    for(var i=0;i<10;i++){specs.push(pick(pool.length?pool:genPool(u||null,0)))}
-    startQuiz(specs.map(makeQ),'gen','智能出题',refill);
+    var qs=dedupPick(function(){return genPool(u||null,lv).length?genPool(u||null,lv):genPool(u||null,0)},10).map(makeQ);
+    startQuiz(qs,'gen','智能出题',refill);
   }
 }
 
@@ -2453,8 +2518,8 @@ function startDrill(kid){
 function startUnitMix(uid){
   if(!permGate('units'))return;
   var name=UNITS.find(function(u){return u.id===uid}).name;
-  startQuiz(mixPool(uid,10).map(makeQ),'gen',name+' 混合闯关',function(){
-    return mixPool(uid,10).map(makeQ);
+  startQuiz(dedupPick(function(){return mixPool(uid,10)},10).map(makeQ),'gen',name+' 混合闯关',function(){
+    return dedupPick(function(){return mixPool(uid,10)},10).map(makeQ);
   });
 }
 function startUnitApp(uid){
@@ -2468,11 +2533,10 @@ function startUnitApp(uid){
   /* 先跑一遍筛出真正带 app 标记的模板 */
   var appPool=pool.filter(function(x){var t=GENS[x.g](x.u,x.k);return t&&t.app});
   if(!appPool.length){appPool=pool}
-  var qs=[];for(var i=0;i<20;i++){qs.push(makeQ(pick(appPool)))}
+  var qs=dedupPick(function(){return appPool},20).map(makeQ);
   var name=UNITS.find(function(u){return u.id===uid}).name;
   startQuiz(qs,'gen',name+' 应用题特训',function(){
-    var arr=[];for(var i=0;i<20;i++){arr.push(makeQ(pick(appPool)))}
-    return arr;
+    return dedupPick(function(){return appPool},20).map(makeQ);
   });
 }
 function startDaily(){
@@ -2761,6 +2825,7 @@ function callLLM(q,user,cfg,photo){
       ?'【学生作答】学生把解题过程写在纸上并拍照上传'+(user?'，并补充了文字：'+user:'（无文字补充）')+'。请先识别照片中的手写解题过程，再按识别内容判定。\n'
       :'【学生作答（可能包含分步计算过程）】\n'+user+'\n')
     +'判定规则：\n'
+    +'0. 【标准答案】由程序精确计算并经过校验，绝对正确——你点评时只能围绕它解释思路，禁止重新计算、禁止给出不同数值；\n'
     +'1. 只要最终答案数值正确（分数等价、单位不影响判定）即为正确，过程写法不必与标准解析一致；\n'
     +'2. 最终答案错误但过程思路正确时，判不正确，并在点评中指出错在哪一步；\n'
     +'3. 学生只写最终答案也算有效作答；\n'
@@ -2813,6 +2878,7 @@ function finishAnswer(q,right,user,aiFeedback,optIdx){
   var correct=right;
   window._answered=true;
   var d=dayTick();d.att++;S.st[q.unit]=S.st[q.unit]||{att:0,cor:0};S.st[q.unit].att++;
+  rememberQ(q.q);   /* v2.4.6：答对答错都记入近期题面，供组题去重 */
   if(right){d.cor++;S.st[q.unit].cor++;QS.ok++;QS.log.push({q:q,ok:true});QS.okStreak=(QS.okStreak||0)+1}
   else{
     QS.okStreak=0;
