@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>六上数学乐园 · 青岛版</title>
+<title>六上数学乐园 · 青岛版（童趣版）</title>
+<meta name="app-version" content="v2.3.1-childlike">
 <style>
 :root{
   --bg:#F7F4EC; --card:#FFFFFF; --ink:#3A352B; --sub:#8A8474;
@@ -88,6 +89,238 @@ svg.map{width:100%;height:auto}
 .opt .frac{font-size:16.5px;display:inline-block}
 .kp .frac{font-size:14px}
 .fb .frac{font-size:14px}
+
+/* ═══════════════════════════════════════════════════════
+   童趣设计系统 · 全局覆盖层（不改动上方任何原有规则）
+   保留全部变量名与类名，只重定义外观；JS 与逻辑零改动
+   ═══════════════════════════════════════════════════════ */
+
+/* — 1. 调色板重定义：米白纸感 → 奶油蓝天乐园 — */
+:root{
+  --bg:#DFF3FF;        /* 天空蓝底 */
+  --card:#FFFFFF;      /* 云朵白卡 */
+  --ink:#37415C;       /* 深夜蓝墨（护眼、对比足） */
+  --sub:#8794B8;       /* 柔和淡紫灰 */
+  --green:#27A567;     /* 活力草绿（成功/主按钮） */
+  --greenL:#E1F7EC;    /* 浅绿 */
+
+  --orange:#FF8A3D;    /* 阳光橙（行动按钮） */
+  --orangeL:#FFF0E2;   /* 浅橙 */
+
+  --blue:#3E9BF0;      /* 晴空蓝（信息） */
+  --blueL:#E3F1FF;     /* 浅蓝 */
+
+  --red:#F0603F;       /* 番茄红（错误提示，柔和不过分吓人） */
+  --redL:#FFE9E4;      /* 浅红 */
+
+  --gold:#F5B325;      /* 星星金 */
+  --line:#E4ECF7;      /* 冰蓝细线 */
+  /* 童趣专用新增变量 */
+  --purpleL:#F1EAFE;   /* 浅紫 */
+  --purple:#9B6FE0;    /* 葡萄紫 */
+  --pinkL:#FFEDF3;     /* 浅粉 */
+  --pink:#FF7BAC;      /* 草莓粉 */
+  --shadow:0 6px 0 rgba(55,65,92,.10);   /* 糖果下坠阴影 */
+  --shadow-lg:0 8px 0 rgba(55,65,92,.12);
+}
+
+/* — 2. 天空底图 + 云朵背景 — */
+body{
+  font-family:"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+  font-size:16px;line-height:1.7;
+  background:
+    url("data:image/svg+xml,%3Csvg%20opacity%3D%270.8%27%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20100%20100%27%3E%3Cellipse%20cx%3D%2750%27%20cy%3D%2786%27%20rx%3D%2730%27%20ry%3D%278%27%20fill%3D%27%2337415C%27%20opacity%3D%270.08%27%2F%3E%3Cpath%20d%3D%27M22%2038%20Q14%2016%2034%2024%20L44%2032%20Z%27%20fill%3D%27%23E8A254%27%20stroke%3D%27%238C5A2B%27%20stroke-width%3D%272.5%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M78%2038%20Q86%2016%2066%2024%20L56%2032%20Z%27%20fill%3D%27%23E8A254%27%20stroke%3D%27%238C5A2B%27%20stroke-width%3D%272.5%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cellipse%20cx%3D%2750%27%20cy%3D%2758%27%20rx%3D%2732%27%20ry%3D%2730%27%20fill%3D%27%23F2B96B%27%20stroke%3D%27%238C5A2B%27%20stroke-width%3D%273%27%2F%3E%3Cellipse%20cx%3D%2750%27%20cy%3D%2771%27%20rx%3D%2720%27%20ry%3D%2716%27%20fill%3D%27%23FFF6E8%27%2F%3E%3Ccircle%20cx%3D%2738%27%20cy%3D%2750%27%20r%3D%274.2%27%20fill%3D%27%234A3B32%27%2F%3E%3Ccircle%20cx%3D%2762%27%20cy%3D%2750%27%20r%3D%274.2%27%20fill%3D%27%234A3B32%27%2F%3E%3Ccircle%20cx%3D%2739.5%27%20cy%3D%2748.5%27%20r%3D%271.4%27%20fill%3D%27%23fff%27%2F%3E%3Ccircle%20cx%3D%2763.5%27%20cy%3D%2748.5%27%20r%3D%271.4%27%20fill%3D%27%23fff%27%2F%3E%3Cellipse%20cx%3D%2750%27%20cy%3D%2762%27%20rx%3D%274.6%27%20ry%3D%273.6%27%20fill%3D%27%234A3B32%27%2F%3E%3Cpath%20d%3D%27M50%2065%20Q45%2071%2040%2068%20M50%2065%20Q55%2071%2060%2068%27%20fill%3D%27none%27%20stroke%3D%27%234A3B32%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%2F%3E%3Cellipse%20cx%3D%2727%27%20cy%3D%2760%27%20rx%3D%276%27%20ry%3D%274%27%20fill%3D%27%23F5A0A0%27%20opacity%3D%270.75%27%2F%3E%3Cellipse%20cx%3D%2773%27%20cy%3D%2760%27%20rx%3D%276%27%20ry%3D%274%27%20fill%3D%27%23F5A0A0%27%20opacity%3D%270.75%27%2F%3E%3C%2Fsvg%3E") no-repeat 86% 9% / 62px 62px,
+    url("data:image/svg+xml,%3Csvg%20opacity%3D%270.8%27%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20100%20100%27%3E%3Cellipse%20cx%3D%2750%27%20cy%3D%2786%27%20rx%3D%2728%27%20ry%3D%278%27%20fill%3D%27%2337415C%27%20opacity%3D%270.08%27%2F%3E%3Cpath%20d%3D%27M22%2042%20L15%2012%20L40%2025%20Z%27%20fill%3D%27%239BA6C4%27%20stroke%3D%27%235B6480%27%20stroke-width%3D%272.5%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M78%2042%20L85%2012%20L60%2025%20Z%27%20fill%3D%27%239BA6C4%27%20stroke%3D%27%235B6480%27%20stroke-width%3D%272.5%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M24%2034%20L20%2017%20L33%2026%20Z%27%20fill%3D%27%23F5A0A0%27%2F%3E%3Cpath%20d%3D%27M76%2034%20L80%2017%20L67%2026%20Z%27%20fill%3D%27%23F5A0A0%27%2F%3E%3Cellipse%20cx%3D%2750%27%20cy%3D%2760%27%20rx%3D%2732%27%20ry%3D%2728%27%20fill%3D%27%23B8C3DC%27%20stroke%3D%27%235B6480%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%2738%27%20cy%3D%2753%27%20r%3D%274.2%27%20fill%3D%27%234A3B32%27%2F%3E%3Ccircle%20cx%3D%2762%27%20cy%3D%2753%27%20r%3D%274.2%27%20fill%3D%27%234A3B32%27%2F%3E%3Ccircle%20cx%3D%2739.5%27%20cy%3D%2751.5%27%20r%3D%271.4%27%20fill%3D%27%23fff%27%2F%3E%3Ccircle%20cx%3D%2763.5%27%20cy%3D%2751.5%27%20r%3D%271.4%27%20fill%3D%27%23fff%27%2F%3E%3Cpath%20d%3D%27M45%2064%20L55%2064%20L50%2070%20Z%27%20fill%3D%27%23F0603F%27%2F%3E%3Cpath%20d%3D%27M50%2070%20Q45%2076%2040%2073%20M50%2070%20Q55%2076%2060%2073%27%20fill%3D%27none%27%20stroke%3D%27%234A3B32%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%2F%3E%3Cpath%20d%3D%27M16%2058%20L28%2060%20M16%2066%20L28%2064%20M84%2058%20L72%2060%20M84%2066%20L72%2064%27%20stroke%3D%27%235B6480%27%20stroke-width%3D%271.6%27%20stroke-linecap%3D%27round%27%2F%3E%3Cellipse%20cx%3D%2728%27%20cy%3D%2768%27%20rx%3D%275.5%27%20ry%3D%273.5%27%20fill%3D%27%23F5A0A0%27%20opacity%3D%270.7%27%2F%3E%3Cellipse%20cx%3D%2772%27%20cy%3D%2768%27%20rx%3D%275.5%27%20ry%3D%273.5%27%20fill%3D%27%23F5A0A0%27%20opacity%3D%270.7%27%2F%3E%3C%2Fsvg%3E") no-repeat 5% 72% / 66px 66px,
+    radial-gradient(circle at 12% 8%, rgba(255,255,255,.85) 0 46px, transparent 47px),
+    radial-gradient(circle at 19% 9%, rgba(255,255,255,.85) 0 58px, transparent 59px),
+    radial-gradient(circle at 26% 8%, rgba(255,255,255,.85) 0 44px, transparent 45px),
+    radial-gradient(circle at 78% 18%, rgba(255,255,255,.7) 0 52px, transparent 53px),
+    radial-gradient(circle at 85% 19%, rgba(255,255,255,.7) 0 64px, transparent 65px),
+    radial-gradient(circle at 92% 18%, rgba(255,255,255,.7) 0 48px, transparent 49px),
+    radial-gradient(circle at 8% 42%, rgba(255,255,255,.5) 0 40px, transparent 41px),
+    radial-gradient(circle at 15% 43%, rgba(255,255,255,.5) 0 50px, transparent 51px),
+    radial-gradient(circle at 70% 58%, rgba(255,255,255,.45) 0 44px, transparent 45px),
+    radial-gradient(circle at 77% 59%, rgba(255,255,255,.45) 0 55px, transparent 56px),
+    radial-gradient(circle at 30% 86%, rgba(255,255,255,.55) 0 48px, transparent 49px),
+    radial-gradient(circle at 38% 87%, rgba(255,255,255,.55) 0 60px, transparent 61px),
+    radial-gradient(circle at 88% 90%, rgba(255,255,255,.5) 0 46px, transparent 47px),
+    radial-gradient(circle at 95% 91%, rgba(255,255,255,.5) 0 56px, transparent 48px),
+    linear-gradient(180deg,#CFEBFF 0%,#DFF3FF 45%,#EAF7E9 100%);
+  background-attachment:fixed;
+  min-height:100vh;
+}
+
+/* — 3. 卡片：云朵白卡 + 糖果阴影 — */
+.card{
+  border-radius:24px !important;
+  border:2.5px solid #EAF2FC !important;
+  box-shadow:var(--shadow);
+  padding:18px !important;
+}
+.card h2{font-size:18px;margin-bottom:10px}
+
+/* — 4. 模块按钮：大色块糖果卡 + 悬浮弹跳 — */
+.modbtn{
+  border:none !important;
+  border-radius:22px !important;
+  padding:18px 12px !important;
+  font-size:16px !important;
+  font-weight:900 !important;
+  color:#fff !important;
+  box-shadow:var(--shadow);
+  transition:transform .15s ease, box-shadow .15s ease;
+  background:var(--blue);
+}
+.modbtn:nth-child(8n+1){background:#FF8A3D}
+.modbtn:nth-child(8n+2){background:#27A567}
+.modbtn:nth-child(8n+3){background:#3E9BF0}
+.modbtn:nth-child(8n+4){background:#9B6FE0}
+.modbtn:nth-child(8n+5){background:#F5B325}
+.modbtn:nth-child(8n+6){background:#FF7BAC}
+.modbtn:nth-child(8n+7){background:#2EC4B6}
+.modbtn:nth-child(8n+8){background:#FF6B6B}
+.modbtn small{color:rgba(255,255,255,.92) !important;font-size:12px !important;margin-top:4px !important}
+.modbtn:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.modbtn:active{transform:translateY(2px) scale(.97);box-shadow:0 2px 0 rgba(55,65,92,.10)}
+
+/* — 5. 按钮：胶囊大按钮，底部厚边按压感 — */
+.btn{
+  border-radius:999px !important;
+  padding:13px 26px !important;
+  font-size:16.5px !important;
+  font-weight:900 !important;
+  box-shadow:0 5px 0 rgba(55,65,92,.16);
+  transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+.btn:hover{filter:brightness(1.06)}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(55,65,92,.16)}
+.btn.orange{background:var(--orange)}
+.btn.blue{background:var(--blue)}
+.btn.plain{
+  background:#fff !important;color:var(--ink) !important;
+  border:2px solid var(--line) !important;box-shadow:0 4px 0 rgba(55,65,92,.08);
+}
+
+/* — 6. 单元列表：白卡 + 糖果编号 — */
+.unitbtn{
+  border:none !important;
+  border-radius:22px !important;
+  padding:15px 16px !important;
+  box-shadow:var(--shadow);
+  transition:transform .15s ease;
+}
+.unitbtn:hover{transform:translateY(-2px)}
+.unitbtn .no{
+  width:44px !important;height:44px !important;
+  border-radius:16px !important;
+  font-size:19px !important;
+  box-shadow:inset 0 -3px 0 rgba(0,0,0,.14);
+}
+.unitbtn .tt b{font-size:16.5px}
+
+/* — 7. 知识点卡 — */
+.kp{border-radius:20px !important;border-width:2px !important;padding:14px 16px !important}
+.kp .head{font-size:16px !important}
+.kp .head .dot{width:26px;height:26px;font-size:14px;border-radius:10px !important}
+
+/* — 8. 题目区：大题干 + 大选项 — */
+.qstem{
+  font-size:20px !important;
+  border-radius:22px !important;
+  border-width:2.5px !important;
+  padding:20px !important;
+  box-shadow:var(--shadow);
+}
+.opt{
+  font-size:17px !important;
+  border-radius:18px !important;
+  padding:15px 18px !important;
+  border-width:2.5px !important;
+  transition:transform .12s ease, background .12s ease;
+}
+.opt:hover{transform:translateY(-2px)}
+.opt:active{transform:scale(.98)}
+.opt.right{background:var(--greenL) !important;border-color:var(--green) !important;animation:pop .35s ease}
+.opt.wrong{background:var(--redL) !important;border-color:var(--red) !important;animation:shake .35s ease}
+@keyframes pop{0%{transform:scale(.96)}55%{transform:scale(1.03)}100%{transform:scale(1)}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+
+/* — 9. 输入框 — */
+input.ansin{
+  font-size:19px !important;
+  border-radius:18px !important;
+  border-width:2.5px !important;
+  padding:15px 18px !important;
+}
+input.ansin:focus{border-color:var(--blue) !important;box-shadow:0 0 0 4px rgba(62,155,240,.15)}
+
+/* — 10. 反馈条：答对答错更有戏剧感 — */
+.fb{border-radius:20px !important;font-size:15px !important;padding:14px 16px !important}
+.fb.ok{background:var(--greenL) !important;color:var(--green) !important;border:2px solid #A8DFC5 !important;animation:pop .4s ease}
+.fb.no{background:var(--redL) !important;color:var(--red) !important;border:2px solid #F3B7A8 !important;animation:shake .4s ease}
+
+/* — 11. 徽章 / 难度芯片：改成软糖药丸 — */
+.badge{border-radius:999px !important;padding:4px 12px !important;font-size:12.5px !important}
+.pctchip{border-radius:999px !important;padding:8px 16px !important;font-size:14.5px !important;font-weight:900 !important;cursor:pointer;transition:transform .12s ease}
+.pctchip:active{transform:scale(.94)}
+.tag{border-radius:999px !important;padding:4px 14px !important;font-size:13px !important}
+
+/* — 12. 进度条：圆滚滚棒棒糖进度 — */
+.bar{height:12px;border-radius:999px !important;background:#E9F0FA !important}
+.bar i{border-radius:999px !important;background:linear-gradient(90deg,#27A567,#7BD98F) !important}
+
+/* — 13. 顶栏：返回按钮变云朵 — */
+.topbar h1{font-size:20px;font-weight:900}
+.backbtn{
+  border-radius:999px !important;
+  border:2px solid var(--line) !important;
+  padding:10px 18px !important;font-size:15px !important;
+  box-shadow:0 4px 0 rgba(55,65,92,.08);
+  transition:transform .12s ease;
+}
+.backbtn:active{transform:translateY(2px)}
+
+/* — 14. 表格圆角化、虚线行距加大 — */
+table.rep{font-size:14px}
+table.rep th,table.rep td{padding:9px 4px}
+.statrow{padding:9px 2px}
+
+/* — 15. 四步法步骤圆点放大 — */
+.step .n{
+  width:36px;height:36px;font-size:17px;
+  box-shadow:inset 0 -3px 0 rgba(0,0,0,.14);
+}
+
+/* — 16. 连续天数：数字更跳 — */
+.bigday b{font-size:42px;background:linear-gradient(180deg,#FF8A3D,#F5B325);-webkit-background-clip:text;background-clip:text;color:transparent;letter-spacing:1px}
+.bigday{padding:20px 0 10px}
+
+/* — 17. 页脚提示淡化 — */
+.footer-tip{opacity:.75}
+
+/* — 18. 出题器选中芯片（JS 内联改背景色为橙，保持橙系即可） — */
+#unitPick .pctchip{margin:3px 3px 3px 0}
+#lvPick .pctchip{margin:3px 3px 3px 0}
+
+/* — 19. 成绩揭晓数字放大弹跳 — */
+.card p[style*="font-size:30px"]{font-size:40px !important;animation:pop .5s ease}
+
+/* — 20. 密码眼睛按钮加大热区 — */
+.pwd-eye{font-size:20px;right:12px}
+
+/* — 21. 页面入场动画：卡片从下轻轻浮起 — */
+.wrap > *{animation:rise .35s ease both}
+@keyframes rise{0%{opacity:0;transform:translateY(10px)}100%{opacity:1;transform:translateY(0)}}
+
+/* — 22. 小动物伙伴（小狗+小猫） — */
+.fb{position:relative}
+.fb.ok::after{content:'🐶';position:absolute;right:14px;top:-13px;font-size:24px;animation:twinkle 1.2s infinite}
+.fb.no::after{content:'🙀';position:absolute;right:14px;top:-13px;font-size:24px;animation:twinkle 1.2s infinite}
+.qstem{position:relative}
+.qstem::after{content:'🐱';position:absolute;top:-17px;right:10px;font-size:27px;transform:rotate(10deg);filter:drop-shadow(0 2px 3px rgba(55,65,92,.18))}
+body::after{content:'';position:fixed;right:12px;bottom:4px;width:92px;height:62px;z-index:-1;pointer-events:none;background:url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20120%2080%27%3E%3Cellipse%20cx%3D%2762%27%20cy%3D%2766%27%20rx%3D%2736%27%20ry%3D%2713%27%20fill%3D%27%23F2B96B%27%20stroke%3D%27%238C5A2B%27%20stroke-width%3D%272.5%27%2F%3E%3Cpath%20d%3D%27M94%2060%20Q106%2050%20104%2038%20Q110%2052%2098%2066%20Z%27%20fill%3D%27%23E8A254%27%20stroke%3D%27%238C5A2B%27%20stroke-width%3D%272.5%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cellipse%20cx%3D%2740%27%20cy%3D%2738%27%20rx%3D%2725%27%20ry%3D%2723%27%20fill%3D%27%23F2B96B%27%20stroke%3D%27%238C5A2B%27%20stroke-width%3D%272.5%27%2F%3E%3Cpath%20d%3D%27M20%2024%20Q13%207%2028%2011%20L36%2018%20Z%27%20fill%3D%27%23E8A254%27%20stroke%3D%27%238C5A2B%27%20stroke-width%3D%272%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M60%2024%20Q67%207%2052%2011%20L44%2018%20Z%27%20fill%3D%27%23E8A254%27%20stroke%3D%27%238C5A2B%27%20stroke-width%3D%272%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cellipse%20cx%3D%2740%27%20cy%3D%2748%27%20rx%3D%2714%27%20ry%3D%2710%27%20fill%3D%27%23FFF6E8%27%2F%3E%3Ccircle%20cx%3D%2731%27%20cy%3D%2734%27%20r%3D%273.2%27%20fill%3D%27%234A3B32%27%2F%3E%3Ccircle%20cx%3D%2749%27%20cy%3D%2734%27%20r%3D%273.2%27%20fill%3D%27%234A3B32%27%2F%3E%3Ccircle%20cx%3D%2732.2%27%20cy%3D%2732.8%27%20r%3D%271.1%27%20fill%3D%27%23fff%27%2F%3E%3Ccircle%20cx%3D%2750.2%27%20cy%3D%2732.8%27%20r%3D%271.1%27%20fill%3D%27%23fff%27%2F%3E%3Cellipse%20cx%3D%2740%27%20cy%3D%2743%27%20rx%3D%273.6%27%20ry%3D%272.8%27%20fill%3D%27%234A3B32%27%2F%3E%3Cpath%20d%3D%27M40%2046%20Q36%2050%2032%2048%20M40%2046%20Q44%2050%2048%2048%27%20fill%3D%27none%27%20stroke%3D%27%234A3B32%27%20stroke-width%3D%271.6%27%20stroke-linecap%3D%27round%27%2F%3E%3Cellipse%20cx%3D%2721%27%20cy%3D%2742%27%20rx%3D%274%27%20ry%3D%272.6%27%20fill%3D%27%23F5A0A0%27%20opacity%3D%270.75%27%2F%3E%3Cellipse%20cx%3D%2759%27%20cy%3D%2742%27%20rx%3D%274%27%20ry%3D%272.6%27%20fill%3D%27%23F5A0A0%27%20opacity%3D%270.75%27%2F%3E%3Cellipse%20cx%3D%2774%27%20cy%3D%2770%27%20rx%3D%278%27%20ry%3D%275%27%20fill%3D%27%23FFF6E8%27%20stroke%3D%27%238C5A2B%27%20stroke-width%3D%272%27%2F%3E%3C%2Fsvg%3E") no-repeat center/contain;opacity:.95}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes twinkle{0%,100%{transform:scale(1) rotate(0deg);opacity:.95}50%{transform:scale(1.25) rotate(12deg);opacity:.5}}
 </style>
 </head>
 <body>
@@ -1459,6 +1692,10 @@ function hasPerm(mod){
   return u.perms[mod]!==false;
 }
 function isBanned(){var u=curUser();return !!(u&&u.banned)}
+function permGate(mod){
+  if(hasPerm(mod))return true;
+  showNoPerm();return false;
+}
 
 function go(name,arg){
   if(window._autoTimer){clearInterval(window._autoTimer);window._autoTimer=null}
@@ -1631,7 +1868,7 @@ VIEWS.home=function(){
     var g=0;try{var gg=JSON.parse(lsGet(KEY));if(gg&&gg.name)g=1}catch(e){}
     app.innerHTML=`${LS_OK?'':'<div class="card" style="border:2px solid #E67E22"><p style="font-size:13.5px;font-weight:700;color:var(--orange)">'+lsWarn()+'</p></div>'}
     <div class="card">
-      <div class="bigday"><b>🙋</b><br><span class="muted">欢迎来到六上数学乐园</span></div>
+      <div style="text-align:center;padding:2px 0 0"><span style="display:inline-block;width:116px;margin:0 8px;animation:floaty 2.8s ease-in-out infinite"><svg style="width:100%;height:auto;display:block" xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><ellipse cx='50' cy='86' rx='30' ry='8' fill='#37415C' opacity='0.08'/><path d='M22 38 Q14 16 34 24 L44 32 Z' fill='#E8A254' stroke='#8C5A2B' stroke-width='2.5' stroke-linejoin='round'/><path d='M78 38 Q86 16 66 24 L56 32 Z' fill='#E8A254' stroke='#8C5A2B' stroke-width='2.5' stroke-linejoin='round'/><ellipse cx='50' cy='58' rx='32' ry='30' fill='#F2B96B' stroke='#8C5A2B' stroke-width='3'/><ellipse cx='50' cy='71' rx='20' ry='16' fill='#FFF6E8'/><circle cx='38' cy='50' r='4.2' fill='#4A3B32'/><circle cx='62' cy='50' r='4.2' fill='#4A3B32'/><circle cx='39.5' cy='48.5' r='1.4' fill='#fff'/><circle cx='63.5' cy='48.5' r='1.4' fill='#fff'/><ellipse cx='50' cy='62' rx='4.6' ry='3.6' fill='#4A3B32'/><path d='M50 65 Q45 71 40 68 M50 65 Q55 71 60 68' fill='none' stroke='#4A3B32' stroke-width='2.2' stroke-linecap='round'/><ellipse cx='27' cy='60' rx='6' ry='4' fill='#F5A0A0' opacity='0.75'/><ellipse cx='73' cy='60' rx='6' ry='4' fill='#F5A0A0' opacity='0.75'/></svg></span><span style="display:inline-block;width:106px;margin:0 8px;animation:floaty 3.2s ease-in-out .5s infinite"><svg style="width:100%;height:auto;display:block" xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><ellipse cx='50' cy='86' rx='28' ry='8' fill='#37415C' opacity='0.08'/><path d='M22 42 L15 12 L40 25 Z' fill='#9BA6C4' stroke='#5B6480' stroke-width='2.5' stroke-linejoin='round'/><path d='M78 42 L85 12 L60 25 Z' fill='#9BA6C4' stroke='#5B6480' stroke-width='2.5' stroke-linejoin='round'/><path d='M24 34 L20 17 L33 26 Z' fill='#F5A0A0'/><path d='M76 34 L80 17 L67 26 Z' fill='#F5A0A0'/><ellipse cx='50' cy='60' rx='32' ry='28' fill='#B8C3DC' stroke='#5B6480' stroke-width='3'/><circle cx='38' cy='53' r='4.2' fill='#4A3B32'/><circle cx='62' cy='53' r='4.2' fill='#4A3B32'/><circle cx='39.5' cy='51.5' r='1.4' fill='#fff'/><circle cx='63.5' cy='51.5' r='1.4' fill='#fff'/><path d='M45 64 L55 64 L50 70 Z' fill='#F0603F'/><path d='M50 70 Q45 76 40 73 M50 70 Q55 76 60 73' fill='none' stroke='#4A3B32' stroke-width='2.2' stroke-linecap='round'/><path d='M16 58 L28 60 M16 66 L28 64 M84 58 L72 60 M84 66 L72 64' stroke='#5B6480' stroke-width='1.6' stroke-linecap='round'/><ellipse cx='28' cy='68' rx='5.5' ry='3.5' fill='#F5A0A0' opacity='0.7'/><ellipse cx='72' cy='68' rx='5.5' ry='3.5' fill='#F5A0A0' opacity='0.7'/></svg></span><div style="font-size:23px;font-weight:900;margin-top:6px">小狗阿黄和小猫咪咪欢迎你！</div></div>
       <p style="text-align:center" class="muted">青岛版（六三制）六年级上册 · 2026 年 7 月版同步</p>
     </div>
     <div class="card"><h2>开始之前，先登录或注册</h2>
@@ -1655,8 +1892,10 @@ VIEWS.home=function(){
     <h2>👋 你好，${CUR.name}<small class="muted">（${CUR.phone}）</small></h2>
     ${CUR.role==='admin'
       ?`<div style="margin-top:10px"><button class="btn blue" style="width:100%" onclick="go('admin')">🛡 进入管理员面板（用户管理 / 学习报告 / 数据备份）</button></div>`
-      :`<div style="margin-top:10px"><button class="btn orange" onclick="startDaily()">▶ 今天的任务（约 10 分钟）</button></div>
-    <p class="muted" style="margin-top:6px">一张知识卡 + 五道题 + 错题重考，今天已练 ${d.att} 题</p>`}
+      :(hasPerm('daily')
+        ?`<div style="margin-top:10px"><button class="btn orange" onclick="startDaily()">▶ 今天的任务（约 10 分钟）</button></div>
+    <p class="muted" style="margin-top:6px">一张知识卡 + 五道题 + 错题重考，今天已练 ${d.att} 题</p>`
+        :`<div style="margin-top:10px"><button class="btn plain" style="width:100%;opacity:.55" onclick="showNoPerm()">🔒 今日任务（未授权）</button></div>`)}
     <div style="margin-top:10px"><button class="btn plain" onclick="doLogout()">🚪 退出登录</button></div>
   </div>
   <div class="grid2">
@@ -1730,6 +1969,7 @@ function pickLv(lv,el){
   el.style.background='var(--orange)';el.style.color='#fff';window._gl=lv;
 }
 function startGen(){
+  if(!permGate('gen'))return;
   var u=window._gu,lv=window._gl;
   function refill(){
     if(lv===0)return mixPool(u,10).map(makeQ);
@@ -1752,6 +1992,7 @@ function startQuiz(qs,mode,title,refill){
   go('quiz');
 }
 function startPass(kid){
+  if(!permGate('units'))return;
   var kp=null,uid=0;
   UNITS.forEach(function(u){u.kps.forEach(function(k){if(k.id===kid){kp=k;uid=u.id}})});
   var specs=kp.gens.map(function(g){return{g:g,u:uid,k:kid}});
@@ -1761,6 +2002,7 @@ function startPass(kid){
   go('quiz');
 }
 function startDrill(kid){
+  if(!permGate('units'))return;
   var kp=null,uid=0;
   UNITS.forEach(function(u){u.kps.forEach(function(k){if(k.id===kid){kp=k;uid=u.id}})});
   var specs=kp.gens.map(function(g){return{g:g,u:uid,k:kid}});
@@ -1771,12 +2013,14 @@ function startDrill(kid){
   });
 }
 function startUnitMix(uid){
+  if(!permGate('units'))return;
   var name=UNITS.find(function(u){return u.id===uid}).name;
   startQuiz(mixPool(uid,10).map(makeQ),'gen',name+' 混合闯关',function(){
     return mixPool(uid,10).map(makeQ);
   });
 }
 function startUnitApp(uid){
+  if(!permGate('units'))return;
   /* 收集该单元所有应用题生成器（总复习=全册应用题混出） */
   var pool=[];
   UNITS.forEach(function(un){
@@ -1794,6 +2038,7 @@ function startUnitApp(uid){
   });
 }
 function startDaily(){
+  if(!permGate('daily'))return;
   var unlit=UNITS.filter(function(u){return u.id<8});
   var kpSpec=null,card='';
   for(var i=0;i<unlit.length;i++){
@@ -1813,6 +2058,7 @@ function startDaily(){
   window._dailyCard=card;
 }
 function startDailyQuiz(){
+  if(!permGate('daily'))return;
   var specs=[];
   var units=UNITS.filter(function(u){return u.id<8});
   for(var i=0;i<5;i++){
@@ -2212,6 +2458,7 @@ VIEWS.wrong=function(){
   app.innerHTML=h;
 };
 function startWrongDue(){
+  if(!permGate('wrong'))return;
   var due=S.wrong.filter(function(w){return !w.done&&w.due<=today()});
   var qs=due.map(function(w){var q={q:w.q,ops:w.ops,ans:w.ans,ratio:w.ratio,exp:w.exp,unit:w.unit,kp:w.kp,lvl:2,app:w.proc?1:0};return q});
   QS={qs:qs,i:0,mode:'wrong',idxList:due.map(function(w){return S.wrong.indexOf(w)}),ok:0,title:'错题重考',log:[]};
@@ -2225,6 +2472,7 @@ VIEWS.place=function(){
   <button class="btn" style="width:100%;margin-top:10px" onclick="startPlace()">开始摸底</button></div>`;
 };
 function startPlace(){
+  if(!permGate('place'))return;
   var qs=[];
   UNITS.forEach(function(u){
     if(u.id===8)return;
@@ -2262,7 +2510,8 @@ VIEWS.map=function(){
   <svg class="map" viewBox="0 0 520 340" xmlns="http://www.w3.org/2000/svg">
     <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#B8B2A0"/></marker></defs>
     ${nodes}
-    <text x="260" y="26" text-anchor="middle" font-size="13" fill="#8A8474" font-weight="bold">学习顺序：分数乘法 → 分数除法 → 比 → 圆 ↓ 解决问题 → 可能性 → 方向与位置 → 总复习</text>
+    <text x="260" y="16" text-anchor="middle" font-size="11.5" fill="#8A8474" font-weight="bold">学习顺序：分数乘法 → 分数除法 → 比 → 圆</text>
+    <text x="260" y="32" text-anchor="middle" font-size="11.5" fill="#8A8474" font-weight="bold">↓ 解决问题 → 可能性 → 方向与位置 → 总复习</text>
   </svg></div>
   <div class="card"><h2>为什么是这个顺序？</h2>
   <p style="font-size:14px">分数乘法是地基 → 除法是乘法的逆运算 → 比（除法关系的一种表达）→ 圆是独立的图形线（周长面积要用小数乘法）→ 解决问题把分数乘除串起来（比一个数多/少几分之几）→ 可能性用分数表达大小 → 方向与位置用数对和角度定位置。</p></div>`;
@@ -2287,6 +2536,7 @@ VIEWS.board=function(){
   app.innerHTML=h;
 };
 function startBoardDrill(uids){
+  if(!permGate('board'))return;
   var pool=[];
   uids.forEach(function(uid){pool=pool.concat(genPool(uid,0))});
   var qs=[];for(var i=0;i<10;i++){qs.push(makeQ(pick(pool)))}
@@ -2342,6 +2592,7 @@ VIEWS.four=function(){
   </div>`;
 };
 function startFourDrill(){
+  if(!permGate('four'))return;
   var appGens=[];
   UNITS.forEach(function(u){u.kps.forEach(function(kp){kp.gens.forEach(function(g){
     if(!GENS[g])return;
