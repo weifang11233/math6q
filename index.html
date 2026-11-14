@@ -1406,7 +1406,19 @@ VIEWS.admin=function(){
     <div style="margin-top:8px"><input type="file" id="impFile" accept=".json" style="width:100%;font-size:12px"></div>
     <button class="btn plain" style="width:100%;margin-top:8px" onclick="importUsers()">⬆ 从备份文件恢复</button>
     <div id="admMsg" style="min-height:18px;font-size:13px;font-weight:700;color:var(--green);margin-top:6px"></div></div>`;
+  /* AI 判分设置（应用题过程作答识别） */
+  var ai=getAIcfg()||{endpoint:'',model:'',key:''};
+  h+=`<div class="card"><h2>🤖 AI 判分设置（应用题过程作答）</h2>
+    <p class="muted" style="font-size:13px">应用题支持学生分步写计算过程。本地先按最终答案自动判分；无法识别时调用下方大模型接口判定。填 OpenAI 兼容接口（家庭内网网关或云服务均可），Key 保存在本机。</p>
+    <input class="ansin" id="aiEndpoint" placeholder="接口地址，如 https://api.xx.com/v1/chat/completions" autocomplete="off" style="margin-bottom:8px;font-size:12px">
+    <input class="ansin" id="aiModel" placeholder="模型名，如 qwen2.5-72b-instruct" autocomplete="off" style="margin-bottom:8px;font-size:12px">
+    <input class="ansin" id="aiKey" type="password" placeholder="API Key" autocomplete="off" style="margin-bottom:10px;font-size:12px">
+    <div class="grid2"><button class="btn" onclick="saveAIcfg()">💾 保存配置</button><button class="btn plain" onclick="testAI()">🔌 测试连通</button></div>
+    <div id="aiMsg" style="min-height:18px;font-size:13px;font-weight:700;margin-top:6px"></div></div>`;
   app.innerHTML=h;
+  document.getElementById('aiEndpoint').value=ai.endpoint||'';
+  document.getElementById('aiModel').value=ai.model||'';
+  document.getElementById('aiKey').value=ai.key||'';
 };
 
 VIEWS.auth=function(){
@@ -1659,6 +1671,11 @@ VIEWS.quiz=function(){
       h+=`<button class="opt" id="opt${idx}" onclick="answer(${idx},'')">${rich(o)}</button>`;
     });
     h+=`<input type="hidden" id="freeIn">`;
+  }else if(q.app){
+    /* 应用题：支持分步写计算过程（多行），判分=本地数字提取 → AI 识别 */
+    h+=`<p class="muted" style="font-size:13px">✍ 可以分步写计算过程（每步一行），最后一行写「答：…」。只写最终答案也可以。</p>
+      <textarea class="ansin" id="freeIn" rows="4" placeholder="例：&#10;总份数：3+2=5&#10;每份：50÷5=10（平方米）&#10;黄瓜：10×2=20（平方米）&#10;答：黄瓜 20 平方米" style="width:100%;resize:vertical;font-family:inherit"></textarea>
+      <div style="margin-top:10px"><button class="btn" style="width:100%" onclick="answer(-1,document.getElementById('freeIn').value)">提交答案</button></div>`;
   }else{
     h+=`<input class="ansin" id="freeIn" placeholder="在这里输入答案，如 3/4" autocomplete="off"
         onkeydown="if(event.key==='Enter')answer(-1,document.getElementById('freeIn').value)">
@@ -1671,10 +1688,112 @@ VIEWS.quiz=function(){
 };
 function answer(optIdx,free){
   if(window._answered)return;
-  var q=QS.qs[QS.i],user,correct;
-  if(q.ops){user=q.ops[optIdx];correct=(user===q.ans)}
-  else{user=String(free||'').trim();correct=checkAns(q,user)}
-  var right=!(!correct);
+  var q=QS.qs[QS.i],user;
+  if(q.ops){user=q.ops[optIdx]}
+  else{user=String(free||'').trim()}
+  window._answered=true;
+  if(q.app&&!q.ops){
+    /* 应用题过程作答：两级判分（本地数字提取 → AI 识别），异步 */
+    var fb0=document.getElementById('fb');
+    fb0.className='fb';fb0.innerHTML='⏳ 正在判分…';
+    gradeAnswer(q,user,function(res){finishAnswer(q,!!res.correct,user,res.feedback||null,optIdx)});
+    return;
+  }
+  var correct=q.ops?(user===q.ans):checkAns(q,user);
+  finishAnswer(q,!!correct,user,null,optIdx);
+}
+/* 从多行过程作答中提取最终数值（支持分数/小数/百分数；优先"答："行） */
+function extractFinal(text){
+  var s=String(text||'');
+  var m=s.match(/答\s*[：:][^\n\d\-]*(-?\d+(?:\.\d+)?(?:\/\d+)?)\s*(?:%|（[^）]*）)?/);
+  if(m)return m[1];
+  var nums=s.match(/-?\d+(?:\.\d+)?(?:\/\d+)?%?/g);
+  if(!nums)return null;
+  var last=nums[nums.length-1];
+  return /%$/.test(last)?last.replace(/%$/,''):last;
+}
+/* 本地预判：ok=最终答案数值正确 / mismatch=数值不一致 / none=提不出数值 */
+function procLocalGrade(q,text){
+  var v=extractFinal(text);
+  if(v===null)return {level:'none'};
+  var uv=val(v),cv=val(q.ans);
+  if(uv===null||cv===null)return {level:'none'};
+  return {level:Math.abs(uv-cv)<1e-9?'ok':'mismatch'};
+}
+/* AI 配置（管理员面板设置，存 localStorage） */
+var AIKEY='qd6_ai';
+function getAIcfg(){try{return JSON.parse(localStorage.getItem(AIKEY))}catch(e){return null}}
+function saveAIcfg(){
+  var ep=(document.getElementById('aiEndpoint').value||'').trim();
+  var mo=(document.getElementById('aiModel').value||'').trim();
+  var ke=(document.getElementById('aiKey').value||'').trim();
+  var m=document.getElementById('aiMsg');
+  if(ep&&!/\/chat\/completions$/.test(ep.replace(/\/+$/,'').replace(/\/v1$/,'/v1/chat/completions'))&&!/chat\/completions$/.test(ep)){
+    m.style.color='#C0392B';m.textContent='✕ 接口地址需以 /chat/completions 结尾（OpenAI 兼容格式）';return;
+  }
+  if(ep&&ke&&mo){
+    localStorage.setItem(AIKEY,JSON.stringify({endpoint:ep,model:mo,key:ke}));
+    m.style.color='#1E8449';m.textContent='✓ 已保存';
+  }else{
+    localStorage.removeItem(AIKEY);
+    m.style.color='#1E8449';m.textContent='✓ 已清空 AI 配置（应用题将只按最终答案判分）';
+  }
+}
+function testAI(){
+  var cfg=getAIcfg(),m=document.getElementById('aiMsg');
+  if(!cfg){m.style.color='#C0392B';m.textContent='✕ 请先保存 AI 配置';return}
+  m.style.color='var(--sub)';m.textContent='⏳ 测试中…';
+  fetch(cfg.endpoint,{method:'POST',
+    headers:{'Content-Type':'application/json',Authorization:'Bearer '+cfg.key},
+    body:JSON.stringify({model:cfg.model,messages:[{role:'user',content:'回复 OK 两个字母'}],temperature:0,max_tokens:10})})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
+  .then(function(j){m.style.color='#1E8449';m.textContent='✓ 连通正常：'+String((j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'').slice(0,20)})
+  .catch(function(e){m.style.color='#C0392B';m.textContent='✕ 连接失败：'+e.message});
+}
+/* AI 判分请求（OpenAI 兼容接口） */
+function callLLM(q,user,cfg){
+  var prompt='你是小学六年级数学老师，请判定学生的应用题作答是否正确。\n'
+    +'【题目】'+q.q+'\n'
+    +'【标准答案】'+q.ans+'\n'
+    +'【参考解析】'+(q.exp||'无')+'\n'
+    +'【学生作答（可能包含分步计算过程）】\n'+user+'\n\n'
+    +'判定规则：\n'
+    +'1. 只要最终答案数值正确（分数等价、单位不影响判定）即为正确，过程写法不必与标准解析一致；\n'
+    +'2. 最终答案错误但过程思路正确时，判不正确，并在点评中指出错在哪一步；\n'
+    +'3. 学生只写最终答案也算有效作答；\n'
+    +'4. 点评用小学生能看懂的中文，不超过 60 字。\n'
+    +'只输出一行 JSON：{"correct": true 或 false, "feedback": "点评"}';
+  return fetch(cfg.endpoint,{method:'POST',
+    headers:{'Content-Type':'application/json',Authorization:'Bearer '+cfg.key},
+    body:JSON.stringify({model:cfg.model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:300})})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
+  .then(function(j){
+    var txt=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';
+    var m=txt.match(/\{[\s\S]*\}/);
+    var obj=m?JSON.parse(m[0]):null;
+    if(!obj||typeof obj.correct!=='boolean')throw new Error('AI 返回格式异常');
+    return {correct:!!obj.correct,feedback:String(obj.feedback||'').slice(0,150)};
+  });
+}
+/* 应用题两级判分入口 */
+function gradeAnswer(q,user,cb){
+  var local=procLocalGrade(q,user);
+  if(local.level==='ok')return cb({correct:true,feedback:null});
+  var cfg=getAIcfg();
+  if(!cfg||!cfg.endpoint||!cfg.key||!cfg.model){
+    var msg=local.level==='mismatch'
+      ?'按最终答案判定为不正确。'
+      :'未配置 AI 判分，无法识别过程性作答。请至少写明最终答案（如「答：48 平方米」）。';
+    return cb({correct:false,feedback:msg});
+  }
+  callLLM(q,user,cfg)
+    .then(function(r){cb(r)})
+    .catch(function(e){
+      cb({correct:false,feedback:'AI 判分调用失败（'+e.message+'），按最终答案判定：不正确。'});
+    });
+}
+function finishAnswer(q,right,user,aiFeedback,optIdx){
+  var correct=right;
   window._answered=true;
   var d=dayTick();d.att++;S.st[q.unit]=S.st[q.unit]||{att:0,cor:0};S.st[q.unit].att++;
   if(right){d.cor++;S.st[q.unit].cor++;QS.ok++;QS.log.push({q:q,ok:true});QS.okStreak=(QS.okStreak||0)+1}
@@ -1682,7 +1801,7 @@ function answer(optIdx,free){
     QS.okStreak=0;
     QS.log.push({q:q,ok:false,user:user});
     S.wrong.push({q:q.q,ops:q.ops||null,ans:q.ans,ratio:q.ratio||0,exp:q.exp,unit:q.unit,kp:q.kp,
-      user:user,ts:Date.now(),due:tomorrow(),done:false});
+      proc:(q.app&&!q.ops)?1:0,user:user,ts:Date.now(),due:tomorrow(),done:false});
   }
   /* 错题重考模式：答对就把那道错题标记为已通过 */
   if(QS.mode==='wrong'&&right&&QS.idxList){
@@ -1692,16 +1811,13 @@ function answer(optIdx,free){
   /* 过关模式：连对 2 题点亮知识点 */
   if(QS.mode==='pass'&&right&&QS.okStreak>=2&&!S.lit[QS.kid]){
     S.lit[QS.kid]=today();
-    var fb0=document.getElementById('fb');
   }
   save();
   var fb=document.getElementById('fb');
   fb.className='fb '+(right?'ok':'no');
-  fb.innerHTML=(right?'🎉 <b>答对了！</b> ':'💭 <b>再想想。</b>正确答案：<b>'+(q.ops?rich(q.ans):rich(q.ans))+'</b><br>')
+  fb.innerHTML=(right?'🎉 <b>答对了！</b> ':'💭 <b>再想想。</b>正确答案：<b>'+rich(q.ans)+'</b><br>')
     +rich(q.exp||'')
-    +(QS.mode==='pass'&&right&&QS.okStreak>=2&&!QS.litNow&&S.lit[QS.kid]===today()&&QS.qs[QS.i+1]===undefined||S.lit[QS.kid]===today()&&!QS._litMsg
-      ?'':'')
-    ;
+    +(aiFeedback?'<br>🤖 <b>AI 点评：</b>'+aiFeedback:'');
   if(QS.mode==='pass'&&S.lit[QS.kid]===today()&&!QS._litMsg){QS._litMsg=true;fb.innerHTML+='<br>⭐ <b>知识点已点亮！连续做对 2 题达成。</b>'}
   if(!q.ops){
     var fi=document.getElementById('freeIn');if(fi)fi.disabled=true;
@@ -1805,7 +1921,7 @@ VIEWS.wrong=function(){
 };
 function startWrongDue(){
   var due=S.wrong.filter(function(w){return !w.done&&w.due<=today()});
-  var qs=due.map(function(w){var q={q:w.q,ops:w.ops,ans:w.ans,ratio:w.ratio,exp:w.exp,unit:w.unit,kp:w.kp,lvl:2};return q});
+  var qs=due.map(function(w){var q={q:w.q,ops:w.ops,ans:w.ans,ratio:w.ratio,exp:w.exp,unit:w.unit,kp:w.kp,lvl:2,app:w.proc?1:0};return q});
   QS={qs:qs,i:0,mode:'wrong',idxList:due.map(function(w){return S.wrong.indexOf(w)}),ok:0,title:'错题重考',log:[]};
   go('quiz');
 }
