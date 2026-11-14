@@ -1,0 +1,2 @@
+deploy/nginx.conf.live
+*.local.*

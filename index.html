@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>六上数学乐园 · 青岛版（童趣版）</title>
-<meta name="app-version" content="v2.3.1-childlike">
+<meta name="app-version" content="v2.4.0-childlike-cloud">
 <style>
 :root{
   --bg:#F7F4EC; --card:#FFFFFF; --ink:#3A352B; --sub:#8A8474;
@@ -504,13 +504,28 @@ function isAdmin(){return CUR&&CUR.role==='admin'}
 
 /* 每个用户独立的学习存档键 */
 function userKey(phone){return 'qd6_state_'+phone}
+/* v2.4：同步架构。load() 仍同步读本地缓存（云端模式下是「最近一次云端副本」，页面秒开）；
+   cloudLoadState 在登录/启动时异步拉云端覆盖；save() 本地落盘后异步推云端（乐观锁+冲突合并）。
+   未登录游客与 NAS 不可达时行为与 v2.3 完全一致。 */
 function load(){  /* 依据登录态加载对应存档 */
   var def={name:'',lit:{},st:{},wrong:[],days:{},t0:Date.now()};
   if(CUR){try{var v=JSON.parse(lsGet(userKey(CUR.phone)));if(v&&typeof v==='object')return v}catch(e){}return def}
   try{var g=JSON.parse(lsGet(KEY));if(g&&typeof g==='object')return g}catch(e){}
   return def;
 }
-function save(){try{lsSet(CUR?userKey(CUR.phone):KEY,JSON.stringify(S))}catch(e){}}
+var _saveTimer=null;
+function save(){
+  try{lsSet(CUR?userKey(CUR.phone):KEY,JSON.stringify(S))}catch(e){}
+  /* 云端模式：登录用户 800ms 防抖推送到 NAS（合并高频写） */
+  if(CUR&&CLOUD.on&&CLOUD.token){
+    if(_saveTimer)clearTimeout(_saveTimer);
+    _saveTimer=setTimeout(function(){
+      cloudSaveState(CUR.phone,S).then(function(r){
+        if(r&&r.relogin){go('home')}
+      });
+    },800);
+  }
+}
 
 /* ───────── 注册 / 登录（界面与逻辑）───────── */
 function togglePwd(id,btn){
@@ -530,10 +545,21 @@ function doRegister(){
   function fail(t){msg.textContent='✕ '+t}
   if(!ph)return fail('请输入手机号');
   if(!validPhone(ph))return fail('手机号格式不正确：必须 11 位且以 1 开头');
-  if(findUser(ph))return fail('该手机号已注册过，请直接登录');
   var issue=passIssue(p1);
   if(issue)return fail(issue);
   if(p1!==p2)return fail('两次输入的密码不一致');
+  /* v2.4 云端模式：账号存 NAS，任何设备可登录 */
+  if(CLOUD.on){
+    msg.style.color='';msg.textContent='… 正在注册…';
+    cloudRegister(ph,nm,p1).then(function(r){
+      if(!r.ok)return fail(r.err);
+      msg.style.color='#1E8449';msg.textContent='✓ 注册成功（云端账号）！正在进入…';
+      CUR={phone:ph,role:'user',name:r.user.name,cloud:true};try{lsSet(CKEY,JSON.stringify(CUR))}catch(e){}
+      /* 云端新账号无存档；本地若有旧游客/同号数据，自动迁移上云 */
+      cloudMaybeMigrate(ph).then(function(){S=load();S.name=r.user.name;save();setTimeout(function(){go('home')},600)});
+    }).catch(function(){fail('云端服务不可达，请稍后再试（或联系管理员检查 NAS）')});
+    return;
+  }
   var salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
   var user={phone:ph,role:'user',name:nm||('同学'+ph.slice(-4)),salt:salt,hash:hashPass(salt,p1),regAt:nowStr(),lastLogin:null};
   USERS.users.push(user);
@@ -553,6 +579,21 @@ function doLogin(){
   function fail(t){msg.textContent='✕ '+t}
   if(!ph)return fail('请输入手机号');
   if(!validPhone(ph))return fail('手机号格式不正确：必须 11 位且以 1 开头');
+  /* v2.4 云端模式：验证与锁定策略由服务端执行 */
+  if(CLOUD.on){
+    msg.style.color='';msg.textContent='… 正在登录…';
+    cloudLogin(ph,p).then(function(r){
+      if(!r.ok)return fail(r.err);
+      msg.style.color='#1E8449';msg.textContent='✓ 登录成功（云端账号）！';
+      CUR={phone:ph,role:r.user.role,name:r.user.name,cloud:true};try{lsSet(CKEY,JSON.stringify(CUR))}catch(e){}
+      /* 拉云端最新存档 → 缓存到本地 → 首页；同时检查本机旧档是否需迁移上云 */
+      cloudLoadState(ph).then(function(st){
+        if(st.data){try{lsSet(userKey(ph),JSON.stringify(st.data))}catch(e){}}
+        cloudMaybeMigrate(ph).then(function(){S=load();save();setTimeout(function(){go('home')},400)});
+      }).catch(function(){S=load();save();setTimeout(function(){go('home')},400)});
+    }).catch(function(){fail('云端服务不可达，请稍后再试')});
+    return;
+  }
   var u=findUser(ph);
   if(!u)return fail('该手机号尚未注册，请先注册');
   if(u.banned)return fail('⛔ 该账号已被封禁'+(u.banReason?'：'+u.banReason:'')+'。如有疑问请联系管理员。');
@@ -571,24 +612,49 @@ function doLogin(){
 }
 function doLogout(){
   save();
+  var wasCloud=CUR&&CUR.cloud;
   clearSession();S=load();QS=null;
+  if(wasCloud&&CLOUD.token){
+    /* 云端登出：撤销服务端会话并清本地 token */
+    cloudFetch('/logout',{method:'POST'}).catch(function(){});
+    CLOUD.token=null;cloudSaveTok();
+  }
   go('home');
 }
 
 /* ───────── 管理员面板 ───────── */
-/* —— 用户管理（封禁/解封 + 模块授权）—— */
+/* —— 用户管理：云端模式走服务端 API（服务端强制校验 admin），本地模式走 localStorage —— */
 var permChanged=false;
+function cloudAdminReq(path,method,body){
+  return cloudFetch(path,{method:method||'GET',body:body===undefined?undefined:JSON.stringify(body)}).then(function(r){
+    if(r.code===200&&r.body.ok!==undefined)return r.body;
+    return {ok:0,err:r.body.err||('操作失败('+r.code+')')};
+  }).catch(function(){return {ok:0,err:'云端服务不可达'}});
+}
 function doBan(phone){
+  var reason=(document.getElementById('banReason').value||'').trim().slice(0,60);
+  if(CLOUD.on){
+    cloudAdminReq('/admin/users/'+phone+'/ban','POST',{reason:reason}).then(function(r){
+      if(r.ok)go('admin');else{var m=document.getElementById('admMsg');if(m){m.style.color='#C0392B';m.textContent='✕ '+r.err}}
+    });
+    return;
+  }
   var u=findUser(phone);
   if(!u||u.role==='admin')return;
   u.banned=true;
-  u.banReason=(document.getElementById('banReason').value||'').trim().slice(0,60);
+  u.banReason=reason;
   u.banAt=nowStr();
   /* 踢出在线会话：清该用户独立会话痕迹（下个动作即被网关拦截） */
   saveUsers(USERS);
   go('admin');
 }
 function doUnban(phone){
+  if(CLOUD.on){
+    cloudAdminReq('/admin/users/'+phone+'/unban','POST').then(function(r){
+      if(r.ok)go('userAdmin',phone);else{var m=document.getElementById('admMsg');if(m){m.style.color='#C0392B';m.textContent='✕ '+r.err}}
+    });
+    return;
+  }
   var u=findUser(phone);
   if(!u)return;
   delete u.banned;delete u.banReason;delete u.banAt;
@@ -596,8 +662,6 @@ function doUnban(phone){
   go('userAdmin',phone);
 }
 function savePerms(phone){
-  var u=findUser(phone);
-  if(!u)return;
   var perms={};
   var allOn=true;
   PERM_LIST.forEach(function(p){
@@ -605,12 +669,111 @@ function savePerms(phone){
     perms[p.mod]=on;
     if(!on)allOn=false;
   });
+  var payload=allOn?null:perms;    /* 全部开启 = null = 默认全功能 */
+  if(CLOUD.on){
+    cloudAdminReq('/admin/users/'+phone,'PUT',{perms:payload}).then(function(r){
+      var m=document.getElementById('permMsg');
+      if(r.ok){m.textContent='✓ 已保存'+(allOn?'（全功能）':'');permChanged=false}
+      else{m.style.color='#C0392B';m.textContent='✕ '+r.err}
+    });
+    return;
+  }
+  var u=findUser(phone);
+  if(!u)return;
   if(allOn){delete u.perms}  /* 全部开启 = 未设置（默认全功能） */
   else{u.perms=perms}
   saveUsers(USERS);
   var m=document.getElementById('permMsg');
   m.textContent='✓ 已保存'+(allOn?'（全功能）':'');
   permChanged=false;
+}
+/* —— v2.4 新增：管理员账号管理（新增/编辑昵称/重置密码/删除）—— */
+function adminAddUser(){
+  var ph=(document.getElementById('admNewPhone').value||'').trim();
+  var nm=(document.getElementById('admNewName').value||'').trim();
+  var p=document.getElementById('admNewPass').value||'';
+  var m=document.getElementById('admNewMsg');
+  function fail(t){m.style.color='#C0392B';m.textContent='✕ '+t}
+  if(CLOUD.on){
+    m.style.color='';m.textContent='… 正在创建…';
+    cloudAdminReq('/admin/users','POST',{phone:ph,name:nm,pass:p}).then(function(r){
+      if(r.ok){m.style.color='#1E8449';m.textContent='✓ 账号已创建（云端）';go('admin')}
+      else fail(r.err);
+    });
+    return;
+  }
+  /* 本地模式 */
+  if(!ph)return fail('请输入手机号');
+  if(!validPhone(ph))return fail('手机号格式不正确');
+  var issue=passIssue(p);
+  if(issue)return fail(issue);
+  if(findUser(ph))return fail('该手机号已存在');
+  var salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
+  USERS.users.push({phone:ph,role:'user',name:nm||('同学'+ph.slice(-4)),salt:salt,hash:hashPass(salt,p),regAt:nowStr(),lastLogin:null});
+  saveUsers(USERS);
+  m.style.color='#1E8449';m.textContent='✓ 账号已创建';
+  go('admin');
+}
+function adminEditName(phone){
+  var nm=(document.getElementById('admName_'+phone).value||'').trim();
+  var m=document.getElementById('admEditMsg_'+phone);
+  if(CLOUD.on){
+    cloudAdminReq('/admin/users/'+phone,'PUT',{name:nm}).then(function(r){
+      if(m){if(r.ok){m.style.color='#1E8449';m.textContent='✓ 已保存'}else{m.style.color='#C0392B';m.textContent='✕ '+r.err}}
+    });
+    return;
+  }
+  var u=findUser(phone);
+  if(!u||!m)return;
+  if(!nm){m.style.color='#C0392B';m.textContent='✕ 昵称不能为空';return}
+  u.name=nm.slice(0,12);saveUsers(USERS);
+  m.style.color='#1E8449';m.textContent='✓ 已保存';
+}
+function adminResetPass(phone){
+  var p=document.getElementById('admNewPwd_'+phone).value||'';
+  var m=document.getElementById('admPwdMsg_'+phone);
+  function fail(t){if(m){m.style.color='#C0392B';m.textContent='✕ '+t}}
+  if(CLOUD.on){
+    if(m){m.style.color='';m.textContent='… 正在重置…'}
+    cloudAdminReq('/admin/users/'+phone+'/resetpass','POST',{pass:p}).then(function(r){
+      if(m){if(r.ok){m.style.color='#1E8449';m.textContent='✓ 已重置，告知孩子新密码即可'}else fail(r.err)}
+    });
+    return;
+  }
+  var issue=p?passIssue(p):'请输入新密码';
+  if(issue)return fail(issue);
+  var u=findUser(phone);
+  if(!u)return;
+  var salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
+  u.salt=salt;u.hash=hashPass(salt,p);delete u.failN;delete u.lockUntil;
+  saveUsers(USERS);
+  if(m){m.style.color='#1E8449';m.textContent='✓ 已重置，告知孩子新密码即可'}
+}
+var _delTarget=null;
+function adminAskDel(phone){
+  _delTarget=phone;
+  var u=CLOUD.on?null:findUser(phone);
+  var name=u?u.name:phone;
+  var m=document.getElementById('admDelMsg_'+phone);
+  if(m)m.innerHTML='⚠️ 确认删除 <b>'+phone+'</b>（'+name+'）？其学习数据将一并删除且不可恢复！<br><button class="btn" style="background:#C0392B;border-color:#C0392B;margin-top:6px" onclick="adminDoDel()">确认删除</button> <button class="btn plain" style="margin-top:6px" onclick="adminCancelDel()">取消</button>';
+}
+function adminCancelDel(){_delTarget=null;go('admin')}
+function adminDoDel(){
+  if(!_delTarget)return;
+  var phone=_delTarget;_delTarget=null;
+  if(CLOUD.on){
+    cloudAdminReq('/admin/users/'+phone,'DELETE').then(function(r){
+      if(!r.ok){var m=document.getElementById('admDelMsg_'+phone);if(m){m.style.color='#C0392B';m.textContent='✕ '+r.err}return}
+      try{lsRm(userKey(phone))}catch(e){}
+      go('admin');
+    });
+    return;
+  }
+  var u=findUser(phone);if(!u||u.role==='admin')return;
+  USERS.users=USERS.users.filter(function(x){return x.phone!==phone});
+  saveUsers(USERS);
+  try{lsRm(userKey(phone))}catch(e){}
+  go('admin');
 }
 function grantAllPerms(){
   PERM_LIST.forEach(function(p){var el=document.getElementById('perm_'+p.mod);if(el)el.checked=true});
@@ -1664,6 +1827,128 @@ function mixPool(unitId,n){
 
 /* ───────── 界面 ───────── */
 var app=document.getElementById('app');
+
+/* ───────── v2.4 云端同步层（NAS 统一存储）─────────
+   CLOUD.on：/api/ping 探测成功后置 true。云端模式下：
+   - 账号表与学习存档全部存 NAS（server/server.js）
+   - 登录/注册签发 Bearer token（30 天，落盘 localStorage）
+   - 存档读写走乐观锁 rev：提交带 rev，冲突 409 时拉云端最新合并重试
+   - 管理员账号管理（新增/编辑/重置密码/封禁/删除）全部服务端鉴权
+   NAS 不可达自动回退 localStorage 本地模式（功能不变）。 */
+var CLOUD={on:false,base:'',token:null,ready:false,rev:{},migrating:false};
+try{CLOUD.token=JSON.parse(lsGet('qd6_cloud_tok'))}catch(e){CLOUD.token=null}
+function cloudSaveTok(){if(CLOUD.token)lsSet('qd6_cloud_tok',JSON.stringify(CLOUD.token));else lsRm('qd6_cloud_tok')}
+function cloudBase(){
+  if(CLOUD.base)return CLOUD.base;
+  CLOUD.base=(location.protocol+'//'+location.host)+'/api';
+  return CLOUD.base;
+}
+function cloudFetch(path,opt){
+  opt=opt||{};
+  var h=opt.headers||{};
+  h['Content-Type']='application/json';
+  if(CLOUD.token)h['Authorization']='Bearer '+CLOUD.token.t;
+  opt.headers=h;
+  return fetch(cloudBase()+path,opt).then(function(r){
+    return r.json().then(function(j){return {code:r.status,body:j}});
+  });
+}
+/* 启动探测：成功→云端模式并恢复会话；失败→本地模式 */
+function cloudProbe(){
+  return cloudFetch('/ping',{method:'GET'}).then(function(r){
+    if(r.code===200&&r.body&&r.body.cloud){
+      CLOUD.on=true;CLOUD.ready=true;
+      /* 恢复会话：token 有效则拉 whoami 重建登录态 */
+      if(CLOUD.token&&CLOUD.token.t){
+        return cloudFetch('/whoami',{method:'GET'}).then(function(w){
+          if(w.code===200&&w.body.ok){CUR={phone:w.body.user.phone,role:w.body.user.role,name:w.body.user.name,cloud:true};try{lsSet(CKEY,JSON.stringify(CUR))}catch(e){}}
+          else{CLOUD.token=null;cloudSaveTok()}
+        }).catch(function(){CLOUD.token=null;cloudSaveTok()});
+      }
+    }
+  }).catch(function(){CLOUD.on=false});
+}
+/* 统一登录：优先云端，云端不可用回退本地 */
+function cloudLogin(ph,p){
+  return cloudFetch('/login',{method:'POST',body:JSON.stringify({phone:ph,pass:p})}).then(function(r){
+    if(r.code===200&&r.body.ok){
+      CLOUD.token={t:r.body.token,phone:ph};cloudSaveTok();
+      return {ok:true,user:r.body.user};
+    }
+    return {ok:false,err:r.body.err||('登录失败('+r.code+')')};
+  });
+}
+function cloudRegister(ph,nm,p){
+  return cloudFetch('/register',{method:'POST',body:JSON.stringify({phone:ph,name:nm,pass:p})}).then(function(r){
+    if(r.code===200&&r.body.ok){
+      CLOUD.token={t:r.body.token,phone:ph};cloudSaveTok();
+      return {ok:true,user:r.body.user};
+    }
+    return {ok:false,err:r.body.err||('注册失败('+r.code+')')};
+  });
+}
+/* 云端存档：load0 拉取（返回 {data,rev}），save0 提交（冲突自动合并重试一次） */
+function cloudLoadState(phone){
+  return cloudFetch('/state',{method:'GET'}).then(function(r){
+    if(r.code===200&&r.body.ok){CLOUD.rev[phone]=r.body.rev;return {data:r.body.data,rev:r.body.rev}}
+    throw new Error('state read '+r.code);
+  });
+}
+function cloudSaveState(phone,data){
+  var rev=CLOUD.rev[phone]||0;
+  return cloudFetch('/state',{method:'PUT',body:JSON.stringify({rev:rev,data:data})}).then(function(r){
+    if(r.code===200&&r.body.ok){CLOUD.rev[phone]=r.body.rev;return {ok:true}}
+    if(r.code===409&&r.body.err==='conflict'){
+      /* 冲突：另一台设备写过。拉最新 → 浅合并（days/st 累加保留最大，wrong 数组去重拼接）→ 重试一次 */
+      var remote=r.body.data||{};
+      var merged=mergeState(remote,data);
+      return cloudFetch('/state',{method:'PUT',body:JSON.stringify({rev:r.body.rev,data:merged})}).then(function(r2){
+        if(r2.code===200&&r2.body.ok){CLOUD.rev[phone]=r2.body.rev;return {ok:true,merged:true}}
+        return {ok:false,err:'同步冲突，请刷新页面重试'};
+      });
+    }
+    if(r.code===401){CLOUD.token=null;cloudSaveTok();CUR=null;return {ok:false,err:'登录已过期，请重新登录',relogin:true}}
+    return {ok:false,err:r.body.err||('保存失败('+r.code+')')};
+  });
+}
+/* 两设备进度合并：以字段级最大值为主，days/st/累计类取并集最大，wrong 按 id 去重拼接 */
+function mergeState(a,b){
+  a=a||{};b=b||{};
+  var out={name:b.name||a.name||'',t0:a.t0||b.t0||Date.now(),lit:{},st:{},wrong:[],days:{}};
+  var litA=a.lit||{},litB=b.lit||{};
+  Object.keys(litB).forEach(function(k){if(litB[k])out.lit[k]=true});
+  Object.keys(litA).forEach(function(k){if(litA[k])out.lit[k]=true});
+  var stA=a.st||{},stB=b.st||{};
+  Object.keys(stB).forEach(function(k){out.st[k]={att:(stB[k].att||0),cor:(stB[k].cor||0)}});
+  Object.keys(stA).forEach(function(k){
+    if(!out.st[k])out.st[k]={att:0,cor:0};
+    out.st[k].att=Math.max(out.st[k].att||0,stA[k].att||0);
+    out.st[k].cor=Math.max(out.st[k].cor||0,stA[k].cor||0);
+  });
+  var seen={},wa=a.wrong||[],wb=b.wrong||[];
+  wb.concat(wa).forEach(function(w){var k=(w&&w.id!==undefined?w.id+'_'+(w.seed||''):JSON.stringify(w));if(!seen[k]){seen[k]=1;out.wrong.push(w)}});
+  out.wrong=out.wrong.slice(-200);
+  var dA=a.days||{},dB=b.days||{};
+  Object.keys(dB).forEach(function(k){out.days[k]={att:(dB[k].att||0),cor:(dB[k].cor||0)}});
+  Object.keys(dA).forEach(function(k){
+    if(!out.days[k])out.days[k]={att:0,cor:0};
+    out.days[k].att=Math.max(out.days[k].att||0,dA[k].att||0);
+    out.days[k].cor=Math.max(out.days[k].cor||0,dA[k].cor||0);
+  });
+  return out;
+}
+/* 首次迁移：云端账号存档为空且本地有旧存档时，自动上传（一次性） */
+function cloudMaybeMigrate(phone){
+  if(CLOUD.migrating)return Promise.resolve();
+  CLOUD.migrating=true;
+  return cloudLoadState(phone).then(function(st){
+    if(st.data)return null;                       /* 云端已有数据，不覆盖 */
+    var local=null;try{local=JSON.parse(lsGet(userKey(phone)))}catch(e){}
+    if(!local||typeof local!=='object')return null;
+    return cloudSaveState(phone,local).then(function(){console.info('本地存档已自动迁移上云',phone);return true});
+  }).catch(function(e){console.warn('迁移检查失败(忽略)',e&&e.message)}).then(function(){CLOUD.migrating=false});
+}
+
 var QS=null;   /* 当前答题会话 */
 var QS_TITLE_LAST='';   /* 连续模式续组时的标题 */
 
@@ -1773,26 +2058,67 @@ VIEWS.userAdmin=function(phone){
 
 VIEWS.admin=function(){
   if(!isAdmin()){go('home');return}
-  var us=USERS.users.slice().sort(function(a,b){return (a.regAt<b.regAt)?-1:1});
-  var h=`<div class="topbar"><button class="backbtn" onclick="go('home')">‹ 首页</button><h1>🛡 管理员面板</h1></div>
-  <div class="card"><h2>👥 注册用户（${USERS.users.length}）</h2>
-  <table class="rep"><tr><th>手机号</th><th>昵称</th><th>角色</th><th>注册时间</th><th>最近登录</th><th>练习/正确</th><th>点亮</th><th>报告</th></tr>`;
-  us.forEach(function(u){
+  /* v2.4：云端模式异步拉列表（服务端统计），本地模式同步渲染 */
+  if(CLOUD.on){
+    app.innerHTML='<div class="topbar"><button class="backbtn" onclick="go(\'home\')">‹ 首页</button><h1>🛡 管理员面板</h1></div><div class="card"><p class="muted">… 正在从云端读取账号数据…</p></div>';
+    adminListData().then(function(d){renderAdmin(d.users,d.cloud,d.err)});
+    return;
+  }
+  renderAdmin(adminListDataLocal(),false,null);
+};
+function adminListDataLocal(){
+  return USERS.users.slice().sort(function(a,b){return (a.regAt<b.regAt)?-1:1}).map(function(u){
     var st={att:0,cor:0},lit=0;
-    try{var sv=JSON.parse(lsGet(userKey(u.phone)));if(sv){st=sv.st[Object.keys(sv.st)[0]]||st;
+    try{var sv=JSON.parse(lsGet(userKey(u.phone)));if(sv){
       var att=0,cor=0;Object.keys(sv.st||{}).forEach(function(k){att+=sv.st[k].att;cor+=sv.st[k].cor});
       st={att:att,cor:cor};
       Object.keys(sv.lit||{}).forEach(function(k){if(sv.lit[k])lit++});
     }}catch(e){}
+    return {phone:u.phone,name:u.name,role:u.role,perms:u.perms,banned:u.banned,banReason:u.banReason,regAt:u.regAt,lastLogin:u.lastLogin,stat:{att:st.att,cor:st.cor,lit:lit}};
+  });
+}
+function renderAdmin(us,cloud,err){
+  var h=`<div class="topbar"><button class="backbtn" onclick="go('home')">‹ 首页</button><h1>🛡 管理员面板</h1></div>
+  ${cloud?'<p class="footer-tip" style="margin:0 0 6px">☁ 云端模式：账号与数据集中保存在飞牛 NAS，任何设备登录都是同一份。</p>':''}
+  ${err?'<div class="card" style="border:2px solid #C0392B"><p style="color:#C0392B;font-weight:700">✕ '+err+'</p></div>':''}
+  <div class="card"><h2>👥 注册用户（${us.length}）</h2>
+  <table class="rep"><tr><th>手机号</th><th>昵称</th><th>角色</th><th>注册时间</th><th>最近登录</th><th>练习/正确</th><th>点亮</th><th>报告</th></tr>`;
+  us.forEach(function(u){
+    var st=u.stat||{att:0,cor:0,lit:0};
     var banTag=u.banned?'<span style="color:#C0392B;font-weight:700">⛔ 封禁</span>':'';
-    h+=`<tr><td>${u.phone}</td><td>${u.name}</td><td>${u.role==='admin'?'🛡 管理员':'👤 用户'}${banTag}</td><td style="font-size:11px">${u.regAt}</td><td style="font-size:11px">${u.lastLogin||'—'}</td><td>${st.att}/${st.cor}</td><td>${lit}</td><td><a href="javascript:void(0)" onclick="adminReport('${u.phone}')" style="color:var(--blue)">报告</a>${u.role==='admin'?'':` ｜ <a href="javascript:void(0)" onclick="go('userAdmin','${u.phone}')" style="color:var(--orange)">管理</a>`}</td></tr>`;
+    h+=`<tr><td>${u.phone}</td><td>${u.name}</td><td>${u.role==='admin'?'🛡 管理员':'👤 用户'}${banTag}</td><td style="font-size:11px">${u.regAt}</td><td style="font-size:11px">${u.lastLogin||'—'}</td><td>${st.att}/${st.cor}</td><td>${st.lit}</td><td><a href="javascript:void(0)" onclick="adminReport('${u.phone}')" style="color:var(--blue)">报告</a>${u.role==='admin'?'':` ｜ <a href="javascript:void(0)" onclick="go('userAdmin','${u.phone}')" style="color:var(--orange)">管理</a>`}</td></tr>`;
   });
   h+='</table></div>';
+  /* v2.4 新增：账号管理操作区 */
+  h+=`<div class="card"><h2>➕ 新增账号</h2>
+    <p class="muted" style="font-size:13px">管理员直接为孩子创建账号（无需注册流程）。密码规则同注册：恰好 10 位，含数字+大写+小写+特殊符号。</p>
+    <input class="ansin" id="admNewPhone" maxlength="11" placeholder="手机号（11 位）" autocomplete="off" style="margin-bottom:8px">
+    <input class="ansin" id="admNewName" maxlength="12" placeholder="孩子昵称（选填）" autocomplete="off" style="margin-bottom:8px">
+    <div class="pwdwrap" style="margin-bottom:8px"><input class="ansin" id="admNewPass" maxlength="10" type="password" placeholder="初始密码（10 位，含数字+大写+小写+特殊符号）" autocomplete="off"><button type="button" class="pwd-eye" onclick="togglePwd('admNewPass',this)">👁</button></div>
+    <button class="btn" style="width:100%" onclick="adminAddUser()">➕ 创建账号</button>
+    <div id="admNewMsg" style="min-height:18px;font-size:13px;font-weight:700;margin-top:6px"></div></div>`;
+  h+=`<div class="card"><h2>✏️ 编辑账号 / 🔑 重置密码 / 🗑 删除</h2>
+    <p class="muted" style="font-size:13px">点击「展开」对单个账号操作。重置密码会立即生效；删除会一并删除该账号的学习数据（保留一份备份在服务端）。</p>
+    <div id="admEditBox">`;
+  us.forEach(function(u){
+    if(u.role==='admin')return;
+    h+=`<div style="border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px"><b>${u.name}</b><span class="muted" style="font-size:12px">${u.phone}</span>
+        <button class="btn plain" style="margin-left:auto;font-size:12px;padding:4px 12px" onclick="adminToggleEdit('${u.phone}',this)">展开</button></div>
+      <div id="admEdit_${u.phone}" style="display:none;margin-top:8px">
+        <div style="display:flex;gap:6px;margin-bottom:6px"><input class="ansin" id="admName_${u.phone}" value="${u.name}" maxlength="12" placeholder="昵称" style="font-size:13px"><button class="btn" style="font-size:12px;padding:4px 14px;white-space:nowrap" onclick="adminEditName('${u.phone}')">💾 存昵称</button></div>
+        <div id="admEditMsg_${u.phone}" style="min-height:14px;font-size:12px"></div>
+        <div style="display:flex;gap:6px;margin-bottom:6px"><input class="ansin" id="admNewPwd_${u.phone}" maxlength="10" type="password" placeholder="新密码（10 位规则同上）" autocomplete="off" style="font-size:13px"><button class="btn" style="font-size:12px;padding:4px 14px;white-space:nowrap" onclick="adminResetPass('${u.phone}')">🔑 重置密码</button></div>
+        <div id="admPwdMsg_${u.phone}" style="min-height:14px;font-size:12px"></div>
+        ${u.banned?'':'<div id="admDelMsg_'+u.phone+'" style="min-height:14px;font-size:12px;color:#C0392B;font-weight:700"></div><button class="btn" style="width:100%;background:#C0392B;border-color:#C0392B;font-size:13px" onclick="adminAskDel(\''+u.phone+'\')">🗑 删除此账号</button>'}
+      </div></div>`;
+  });
+  h+=`</div></div>`;
   h+=`<div class="card"><h2>💾 数据保护</h2>
-    <p class="muted" style="font-size:13px">注册数据实时永久保存在本机存储，并自动保留<b>两份滚动备份</b>（主表损坏时自动恢复）。导出 JSON 文件可跨设备迁移/灾备。</p>
+    <p class="muted" style="font-size:13px">${cloud?'账号与学习数据实时保存在 NAS 云端，服务端自动保留双份滚动备份（主档损坏自动恢复）。导出 JSON 仍可作线下灾备。':'注册数据实时永久保存在本机存储，并自动保留两份滚动备份（主表损坏时自动恢复）。导出 JSON 文件可跨设备迁移/灾备。'}</p>
     <button class="btn" style="width:100%" onclick="exportUsers()">⬇ 导出全部用户数据（JSON 备份）</button>
     <div style="margin-top:8px"><input type="file" id="impFile" accept=".json" style="width:100%;font-size:12px"></div>
-    <button class="btn plain" style="width:100%;margin-top:8px" onclick="importUsers()">⬆ 从备份文件恢复</button>
+    <button class="btn plain" style="width:100%;margin-top:8px" onclick="importUsers()">⬆ 从备份文件恢复（导入账号上云）</button>
     <div id="admMsg" style="min-height:18px;font-size:13px;font-weight:700;color:var(--green);margin-top:6px"></div></div>`;
   /* AI 判分设置：首次由管理员填写 Key；页面源码与 DOM 都不含明文密钥 */
   var ai=getAIcfg(),first=!ai;
@@ -1821,7 +2147,14 @@ VIEWS.admin=function(){
                       :'已保存（尾号 '+(ai.key?ai.key.slice(-4):'无')+'）· 留空保持不变';
   updateAIModelDesc();
   document.getElementById('aiModel').addEventListener('input',updateAIModelDesc);
-};
+}
+function adminToggleEdit(phone,btn){
+  var box=document.getElementById('admEdit_'+phone);
+  if(!box)return;
+  var show=box.style.display==='none';
+  box.style.display=show?'block':'none';
+  if(btn)btn.textContent=show?'收起':'展开';
+}
 
 VIEWS.auth=function(){
   var h=`<div class="topbar"><button class="backbtn" onclick="go('home')">‹ 首页</button><h1>${AUTH_MODE==='reg'?'📝 注册新用户':'🔑 用户登录'}</h1></div>
@@ -2232,9 +2565,13 @@ function fetchAIModels(){
   var ke=(document.getElementById('aiKey').value||'').trim()||((getAIcfg()||{}).key||'');
   var m=document.getElementById('aiMsg');
   if(!ep){m.style.color='#C0392B';m.textContent='✕ 请先填接口地址';return}
-  var base=ep.replace(/\/chat\/completions\/?$/,'');
+  /* 相对地址（/ai/chat/completions）→ 同源 /ai/models；直连完整地址 → 原样换 /models */
+  var base;
+  if(ep.charAt(0)==='/'){base='/ai'}
+  else{base=ep.replace(/\/chat\/completions\/?$/,'').replace(/\/v1\/?$/,'/v1');}
+  var modelsUrl=base+'/models';
   m.style.color='var(--sub)';m.textContent='⏳ 获取模型列表…';
-  fetch(base+'/models',{headers:ke?{Authorization:'Bearer '+ke}:{}})
+  fetch(modelsUrl,{headers:ke?{Authorization:'Bearer '+ke}:{}})
   .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
   .then(function(j){
     var ids=(j.data||[]).map(function(x){return x.id}).sort();
@@ -2276,6 +2613,20 @@ function resetAIcfg(){
   var m=document.getElementById('aiMsg');
   m.style.color='#1E8449';m.textContent='✓ 已清空配置：AI 判分停用，应用题自动按最终答案判分';
 }
+/* v2.4：旧版直连配置自动迁移。旧配置指向 3201 完整网关（跨域被浏览器拦截 → Failed to fetch），
+   探测到即静默改写为同源代理地址（Key 由 NAS nginx 注入，所有账号设备可用），只执行一次。 */
+function aiMigrateToProxy(){
+  try{
+    var c=JSON.parse(lsGet(AIKEY));
+    if(c&&c.endpoint&&c.endpoint.indexOf(':3201/')>=0){
+      c.endpoint='/ai/chat/completions';
+      c.key='';
+      lsSet(AIKEY,JSON.stringify(c));
+      console.info('AI 配置已自动迁移到同源代理（修复跨域 Failed to fetch）');
+    }
+  }catch(e){}
+}
+aiMigrateToProxy();
 function testAI(){
   var cfg=getAIcfg(),m=document.getElementById('aiMsg');
   if(!isAIReady(cfg)){m.style.color='#C0392B';m.textContent='✕ 请先点「保存配置」（推荐留空 Key 走 NAS 代理）';return}
@@ -2671,13 +3022,26 @@ VIEWS.about=function(){
   ③ 每天用<b>今天的任务</b>（10 分钟：一卡五题 + 错题重考）；<br>
   ④ 单元学完做一次<b>混合闯关</b>；周末跑一次<b>摸底</b>看进步。</p></div>
   <div class="card"><h2>数据与隐私</h2>
-  <p class="muted" style="font-size:14px">所有进度保存在<b>这台设备</b>的浏览器里（localStorage），不联网、不上传、不要钱。换设备时不会自动同步。</p></div>
+  <p class="muted" style="font-size:14px">${CLOUD.on?'☁ <b>云端同步模式</b>：账号与所有进度集中保存在家里的飞牛 NAS 上，任何设备登录同一账号，看到的都是同一份最新进度（自动合并，无需手动迁移）。':'所有进度保存在<b>这台设备</b>的浏览器里（localStorage），不联网、不上传、不要钱。换设备时不会自动同步。'}</p></div>
   <div class="card"><h2>题目是怎么来的</h2>
   <p class="muted" style="font-size:14px">每道题都由"出题生成器"现场编：数字随机、答案现算、错误选项专门埋在常见错点上。所以永远做不完、也永远不重复打卡。知识点讲解按青岛版六上单元编排。</p></div>`;
 };
 
-/* 启动 */
+/* 启动：先探测云端（异步），探测期间先按本地会话渲染（离线可用，探测成功自动刷新界面） */
 go('home');
+cloudProbe().then(function(){
+  if(!CLOUD.on)return;
+  console.info('云端同步模式已启用（NAS 统一存储）');
+  if(CUR&&CUR.cloud){
+    /* 云端会话恢复：拉最新存档覆盖本地缓存，再刷新当前视图 */
+    cloudLoadState(CUR.phone).then(function(st){
+      if(st.data){try{lsSet(userKey(CUR.phone),JSON.stringify(st.data))}catch(e){}}
+      S=load();
+    }).catch(function(){}).then(function(){go('home')});
+  }else{
+    go('home');   /* 未登录或本地会话：重渲染以显示云端标识 */
+  }
+});
 </script>
 </body>
 </html>
