@@ -168,11 +168,13 @@ sandbox.CUR = { phone: '13900001111', role: 'user' };
 chk('空 perms 对象不崩溃且默认放行', sandbox.hasPerm('ai') === true);
 
 /* ---------- 5. AI 判分 + 密钥安全（v2.2 / v2.3.2） ---------- */
-const EP = 'http://192.168.31.88:3201/v1/chat/completions';
+const EP = '/ai/chat/completions';
 const TEST_KEY = 'sk-smoke-test-0123456789abcdef';
 chk('页面源码零明文 Key（无 freellmapi / 无 DEFAULT_AI.key）',
   !html.includes('freellmapi-') && !html.includes('DEFAULT_AI.key') && !/key\s*:\s*['"][A-Za-z0-9_-]{24,}['"]/.test(html));
-chk('推荐默认配置不含 key 字段', sandbox.DEFAULT_AI && !('key' in sandbox.DEFAULT_AI) && sandbox.DEFAULT_AI.endpoint === EP);
+chk('页面源码不含网关内网地址', !html.includes('192.168.31.88:3201'));
+chk('推荐默认配置不含 key 字段且走同源代理', sandbox.DEFAULT_AI && !('key' in sandbox.DEFAULT_AI) && sandbox.DEFAULT_AI.endpoint === EP);
+chk('默认代理配置即可判分就绪（无需填 Key）', sandbox.isAIReady({ endpoint: EP, model: 'qwen2.5-vl-72b', key: '' }) === true);
 chk('备用模型列表 10 个（含视觉模型）', sandbox.AI_MODELS.length === 10 && sandbox.AI_MODELS.filter(m => m.d.includes('👁')).length >= 5);
 
 sandbox.lsRm('qd6_ai');

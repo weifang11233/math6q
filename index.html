@@ -1797,12 +1797,12 @@ VIEWS.admin=function(){
   /* AI 判分设置：首次由管理员填写 Key；页面源码与 DOM 都不含明文密钥 */
   var ai=getAIcfg(),first=!ai;
   var aiHint=first
-    ?'<div style="border:2px dashed var(--orange);border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px;line-height:1.6">🔑 <b>首次配置：</b>请填写 API Key 后点「保存配置」。Key <b>只保存在这台设备的浏览器里</b>，不会写进页面源码、不会随页面下发给其他设备，也不会出现在导出的用户备份中。<br>若 Key 由 NAS 反向代理在服务端注入，可<b>留空 Key</b>直接保存（服务端代理模式）。</div>'
+    ?'<div style="border:2px dashed var(--orange);border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px;line-height:1.6">🔑 <b>首次配置（推荐）：</b>接口地址已预填同源代理 <b>/ai/chat/completions</b>，<b>Key 留空</b>直接点「保存配置」即可——Key 由 NAS 在服务端注入，孩子的所有设备都能用 AI 判分，页面和浏览器都不持有密钥。<br>若改走直连（自己填完整网关地址），才需要填 API Key；此时 Key <b>只存这台设备的浏览器</b>，不会写进页面源码、不会随页面下发，也不会出现在导出的用户备份中。</div>'
     :'<p class="muted" style="font-size:12.5px;margin-top:0">✅ 已配置：'+(ai.key?'Key 仅存本机（尾号 '+ai.key.slice(-4)+'）':'服务端代理模式（请求不带 Key）')+'。页面源码不含任何密钥。</p>';
   h+=`<div class="card"><h2>🤖 AI 判分设置（过程作答 + 拍照识别）</h2>
     <p class="muted" style="font-size:13px">应用题支持分步写过程与<b>拍照上传手写过程</b>。本地先按最终答案自动判分；无法识别时调用大模型判定。拍照识别需选<b>视觉模型</b>（带 👁 标记）。未配置时自动降级为按最终答案判分。</p>
     ${aiHint}
-    <input class="ansin" id="aiEndpoint" placeholder="接口地址，如 http://192.168.31.88:3201/v1/chat/completions" autocomplete="off" style="margin-bottom:8px;font-size:12px">
+    <input class="ansin" id="aiEndpoint" placeholder="接口地址（推荐 /ai/chat/completions；直连请填完整地址并自填 Key）" autocomplete="off" style="margin-bottom:8px;font-size:12px">
     <div class="pwdwrap" style="margin-bottom:8px"><input class="ansin" id="aiKey" type="password" autocomplete="new-password" style="font-size:12px"><button type="button" class="pwd-eye" onclick="togglePwd('aiKey',this)" title="显示/隐藏">👁</button></div>
     <input class="ansin" id="aiModel" list="aiModelList" placeholder="判分模型（下拉选择或输入）" autocomplete="off" style="margin-bottom:8px;font-size:12px">
     <datalist id="aiModelList">${AI_MODELS.map(function(m){return '<option value="'+m.id+'">'+m.d+'</option>'}).join('')}</datalist>
@@ -2199,8 +2199,10 @@ function procLocalGrade(q,text){
    Key 只存当前浏览器 localStorage，不写进页面、不进导出的用户备份、不随页面下发。
    「服务端代理模式」：Key 留空，请求不带 Authorization，由 NAS 反向代理在服务端注入。 */
 var AIKEY='qd6_ai';
-/* 推荐值（非敏感）：仅用于管理员面板预填，未点保存前不生效 */
-var DEFAULT_AI={endpoint:'http://192.168.31.88:3201/v1/chat/completions',model:'qwen2.5-vl-72b'};
+/* 推荐值（非敏感）：默认同源代理 /ai/，Key 由 NAS nginx 在服务端注入，
+   所有设备都能用 AI 判分且浏览器不持有密钥；仅预填，未点保存前不生效。
+   直连模式则把地址改成完整网关地址，并在面板自填 API Key。 */
+var DEFAULT_AI={endpoint:'/ai/chat/completions',model:'qwen2.5-vl-72b'};
 function isAIReady(c){return !!(c&&c.endpoint&&c.model)}
 function aiHeaders(c){var h={'Content-Type':'application/json'};if(c&&c.key)h.Authorization='Bearer '+c.key;return h}
 /* 内置推荐模型（从网关 320 个模型中挑选；👁=支持图片识别可拍照判分） */
@@ -2276,7 +2278,7 @@ function resetAIcfg(){
 }
 function testAI(){
   var cfg=getAIcfg(),m=document.getElementById('aiMsg');
-  if(!isAIReady(cfg)){m.style.color='#C0392B';m.textContent='✕ 请先在管理员面板填写 API Key 并保存配置';return}
+  if(!isAIReady(cfg)){m.style.color='#C0392B';m.textContent='✕ 请先点「保存配置」（推荐留空 Key 走 NAS 代理）';return}
   m.style.color='var(--sub)';m.textContent='⏳ 测试中…';
   fetch(cfg.endpoint,{method:'POST',
     headers:aiHeaders(cfg),
