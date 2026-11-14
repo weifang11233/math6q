@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>六上数学乐园 · 青岛版（童趣版）</title>
-<meta name="app-version" content="v2.4.0-childlike-cloud">
+<meta name="app-version" content="v2.4.2-childlike-cloud">
 <style>
 :root{
   --bg:#F7F4EC; --card:#FFFFFF; --ink:#3A352B; --sub:#8A8474;
@@ -583,15 +583,36 @@ function doLogin(){
   if(CLOUD.on){
     msg.style.color='';msg.textContent='… 正在登录…';
     cloudLogin(ph,p).then(function(r){
+      if(r.ok)return r;
+      /* v2.4.2 存量本地账号自动升级上云：云端无此号，但本机账号表里有且密码验证通过
+         → 用 /api/admin/import 通道（服务端会校验操作者是 admin）走不通；
+         改用一次性「本地凭证迁移」：本机验证 salt/hash 通过后，调 register 重建云端账号，
+         成功后把本地存档推上去。若本机也没有此号 → 返回原始错误。 */
+      var lu=findUser(ph);
+      if(lu&&lu.salt&&lu.hash&&hashPass(lu.salt,p)===lu.hash&&!lu.banned){
+        msg.textContent='… 检测到本机存量账号，正在升级为云端账号…';
+        return cloudRegister(ph,lu.name,p).then(function(rr){
+          if(!rr.ok)throw new Error(rr.err||'升级失败');
+          /* 本地存档随首登自动迁移（cloudMaybeMigrate 在后续流程触发）；这里同步清掉本地账号表该条目，避免双份歧义 */
+          try{
+            var db=USERS;
+            db.users=db.users.filter(function(x){return x.phone!==ph});
+            saveUsers(db);
+          }catch(e){}
+          return {ok:true,user:rr.user,upgraded:true};
+        });
+      }
+      return r;
+    }).then(function(r){
       if(!r.ok)return fail(r.err);
-      msg.style.color='#1E8449';msg.textContent='✓ 登录成功（云端账号）！';
+      msg.style.color='#1E8449';msg.textContent=r.upgraded?'✓ 已升级为云端账号（进度同步到 NAS）！':'✓ 登录成功（云端账号）！';
       CUR={phone:ph,role:r.user.role,name:r.user.name,cloud:true};try{lsSet(CKEY,JSON.stringify(CUR))}catch(e){}
       /* 拉云端最新存档 → 缓存到本地 → 首页；同时检查本机旧档是否需迁移上云 */
       cloudLoadState(ph).then(function(st){
         if(st.data){try{lsSet(userKey(ph),JSON.stringify(st.data))}catch(e){}}
         cloudMaybeMigrate(ph).then(function(){S=load();save();setTimeout(function(){go('home')},400)});
       }).catch(function(){S=load();save();setTimeout(function(){go('home')},400)});
-    }).catch(function(){fail('云端服务不可达，请稍后再试')});
+    }).catch(function(e){fail(e&&e.message?e.message:'云端服务不可达，请稍后再试')});
     return;
   }
   var u=findUser(ph);
