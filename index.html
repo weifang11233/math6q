@@ -2066,6 +2066,16 @@ VIEWS.admin=function(){
   }
   renderAdmin(adminListDataLocal(),false,null);
 };
+/* 云端模式拉用户列表（含学习统计）；本地模式同步读 USERS（adminListDataLocal 定义在 renderAdmin 后） */
+function adminListData(){
+  if(CLOUD.on){
+    return cloudAdminReq('/admin/users','GET').then(function(r){
+      if(r.ok)return {users:(r.users||[]).map(function(u){return {phone:u.phone,name:u.name,role:u.role,perms:u.perms,banned:u.banned,banReason:u.banReason,regAt:u.regAt,lastLogin:u.lastLogin,stat:u.stat||{att:0,cor:0,lit:0}}}),cloud:true};
+      return {users:[],cloud:true,err:r.err};
+    });
+  }
+  return Promise.resolve({users:adminListDataLocal(),cloud:false,err:null});
+}
 function adminListDataLocal(){
   return USERS.users.slice().sort(function(a,b){return (a.regAt<b.regAt)?-1:1}).map(function(u){
     var st={att:0,cor:0},lit=0;
