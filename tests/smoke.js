@@ -167,14 +167,82 @@ u.perms = {}; commit();
 sandbox.CUR = { phone: '13900001111', role: 'user' };
 chk('空 perms 对象不崩溃且默认放行', sandbox.hasPerm('ai') === true);
 
-/* ---------- 5. AI 判分（v2.2 / v2.2.3） ---------- */
+/* ---------- 5. AI 判分 + 密钥安全（v2.2 / v2.3.2） ---------- */
 const EP = 'http://192.168.31.88:3201/v1/chat/completions';
-chk('内置网关默认配置可用', sandbox.getAIcfg().endpoint === EP);
+const TEST_KEY = 'sk-smoke-test-0123456789abcdef';
+chk('页面源码零明文 Key（无 freellmapi / 无 DEFAULT_AI.key）',
+  !html.includes('freellmapi-') && !html.includes('DEFAULT_AI.key') && !/key\s*:\s*['"][A-Za-z0-9_-]{24,}['"]/.test(html));
+chk('推荐默认配置不含 key 字段', sandbox.DEFAULT_AI && !('key' in sandbox.DEFAULT_AI) && sandbox.DEFAULT_AI.endpoint === EP);
 chk('备用模型列表 10 个（含视觉模型）', sandbox.AI_MODELS.length === 10 && sandbox.AI_MODELS.filter(m => m.d.includes('👁')).length >= 5);
-sandbox.lsSet('qd6_ai', '{坏JSON');
-chk('AI 配置损坏时回退默认', sandbox.getAIcfg().endpoint === EP);
+
 sandbox.lsRm('qd6_ai');
-chk('AI 配置清空时回退默认', sandbox.getAIcfg().endpoint === EP);
+chk('未配置时 getAIcfg 返回 null', sandbox.getAIcfg() === null);
+sandbox.lsSet('qd6_ai', '{坏JSON');
+chk('AI 配置损坏时不抛异常、返回 null', sandbox.getAIcfg() === null);
+sandbox.lsRm('qd6_ai');
+chk('AI 配置清空后返回 null', sandbox.getAIcfg() === null);
+
+/* isAIReady / aiHeaders 边界 */
+chk('isAIReady 空值边界全 false', [null, undefined, {}, { endpoint: EP }, { model: 'm' }]
+  .every(c => sandbox.isAIReady(c) === false));
+chk('直连模式（带 Key）判定就绪', sandbox.isAIReady({ endpoint: EP, model: 'm', key: TEST_KEY }) === true);
+chk('服务端代理模式（Key 留空）判定就绪', sandbox.isAIReady({ endpoint: EP, model: 'm', key: '' }) === true);
+chk('aiHeaders 代理模式不带 Authorization', !('Authorization' in sandbox.aiHeaders({ endpoint: EP, model: 'm', key: '' })));
+chk('aiHeaders 直连模式带 Bearer', sandbox.aiHeaders({ key: TEST_KEY }).Authorization === 'Bearer ' + TEST_KEY);
+chk('aiHeaders 空配置不抛异常', Object.keys(sandbox.aiHeaders(null)).length === 1);
+
+/* 管理员面板：首次配置引导 + Key 绝不回显明文 */
+sandbox.CUR = { phone: '13455656547', role: 'admin', name: '管理员' };
+sandbox.go('admin');
+chk('首次打开显示「首次配置」引导', app.innerHTML.includes('首次配置') && app.innerHTML.includes('不会随页面下发'));
+chk('首次打开 AI 设置面板不含任何 Key', !app.innerHTML.includes(TEST_KEY) && E('aiKey').value === '');
+chk('首次打开预填推荐接口与模型', E('aiEndpoint').value === EP && E('aiModel').value === 'qwen2.5-vl-72b');
+
+/* 真实走保存函数 */
+E('aiEndpoint').value = EP;
+E('aiModel').value = 'qwen2.5-vl-72b';
+E('aiKey').value = TEST_KEY;
+sandbox.saveAIcfg();
+chk('保存后 Key 只进 localStorage', (JSON.parse(sandbox.lsGet('qd6_ai')) || {}).key === TEST_KEY);
+chk('保存后输入框明文被清空（不回显）', E('aiKey').value === '');
+chk('保存后 placeholder 只露尾号', E('aiKey').placeholder.includes('ef') && !E('aiKey').placeholder.includes(TEST_KEY));
+chk('保存提示说明密钥不下发', E('aiMsg').textContent.includes('页面源码不含密钥'));
+sandbox.go('admin');
+chk('二次打开面板不含完整 Key', app.innerHTML.includes('已配置') && !app.innerHTML.includes(TEST_KEY) && E('aiKey').value === '');
+chk('二次打开面板只显示尾号', app.innerHTML.includes('cdef'));
+
+/* 留空输入框保存 = 沿用旧 Key（掩码不影响配置） */
+E('aiEndpoint').value = EP;
+E('aiModel').value = 'qwen-3-vl-30b-a3b-instruct';
+E('aiKey').value = '';
+sandbox.saveAIcfg();
+chk('留空保存沿用旧 Key 且模型可更新', (JSON.parse(sandbox.lsGet('qd6_ai')) || {}).key === TEST_KEY
+  && (JSON.parse(sandbox.lsGet('qd6_ai')) || {}).model === 'qwen-3-vl-30b-a3b-instruct');
+
+/* 清除 Key → 服务端代理模式 */
+sandbox.clearAIKey();
+chk('clearAIKey 清空 Key 但保留接口/模型', sandbox.isAIReady(sandbox.getAIcfg()) === true && sandbox.getAIcfg().key === '');
+chk('代理模式请求头无 Authorization', !('Authorization' in sandbox.aiHeaders(sandbox.getAIcfg())));
+sandbox.go('admin');
+chk('代理模式面板标注正确', app.innerHTML.includes('服务端代理模式'));
+
+/* 清空全部配置 → 回到首次配置 */
+sandbox.resetAIcfg();
+chk('resetAIcfg 清空配置', sandbox.getAIcfg() === null && sandbox.lsGet('qd6_ai') === null);
+chk('清空后面板回到首次配置引导', app.innerHTML.includes('首次配置'));
+
+/* 未配置时判分降级（不联网、不抛异常） */
+let gradeRes = null;
+sandbox.gradeAnswer({ q: '应用题', ans: '42', app: true }, '先算每份，再相乘，思路是对的', r => { gradeRes = r; });
+chk('gradeAnswer 未配置时降级且提示管理员配置', !!gradeRes && gradeRes.correct === false && gradeRes.feedback.includes('未配置'));
+let photoRes = null;
+sandbox.gradePhoto({ q: '应用题', ans: '42' }, '', 'data:image/jpeg;base64,AAA', r => { photoRes = r; });
+chk('gradePhoto 未配置时降级不调用网络', !!photoRes && photoRes.correct === false && photoRes.feedback.includes('未配置'));
+sandbox.testAI();
+chk('testAI 未配置时提示先保存配置', E('aiMsg').textContent.includes('请先'));
+chk('导出用户备份不含 AI 配置', sandbox.exportUsers.toString().indexOf('qd6_ai') === -1
+  && sandbox.exportUsers.toString().indexOf('AIKEY') === -1);
+
 chk('拍照识别 / 过程作答入口存在', typeof sandbox.gradePhoto === 'function' && typeof sandbox.handlePhoto === 'function'
   && typeof sandbox.procLocalGrade === 'function' && typeof sandbox.extractFinal === 'function');
 const ex = sandbox.extractFinal('3×5=15，所以一共 15 个，答：15 个');

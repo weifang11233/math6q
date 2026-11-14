@@ -1794,23 +1794,31 @@ VIEWS.admin=function(){
     <div style="margin-top:8px"><input type="file" id="impFile" accept=".json" style="width:100%;font-size:12px"></div>
     <button class="btn plain" style="width:100%;margin-top:8px" onclick="importUsers()">⬆ 从备份文件恢复</button>
     <div id="admMsg" style="min-height:18px;font-size:13px;font-weight:700;color:var(--green);margin-top:6px"></div></div>`;
-  /* AI 判分设置（应用题过程作答识别 + 拍照识别） */
-  var ai=getAIcfg()||{endpoint:'',model:'',key:''};
+  /* AI 判分设置：首次由管理员填写 Key；页面源码与 DOM 都不含明文密钥 */
+  var ai=getAIcfg(),first=!ai;
+  var aiHint=first
+    ?'<div style="border:2px dashed var(--orange);border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px;line-height:1.6">🔑 <b>首次配置：</b>请填写 API Key 后点「保存配置」。Key <b>只保存在这台设备的浏览器里</b>，不会写进页面源码、不会随页面下发给其他设备，也不会出现在导出的用户备份中。<br>若 Key 由 NAS 反向代理在服务端注入，可<b>留空 Key</b>直接保存（服务端代理模式）。</div>'
+    :'<p class="muted" style="font-size:12.5px;margin-top:0">✅ 已配置：'+(ai.key?'Key 仅存本机（尾号 '+ai.key.slice(-4)+'）':'服务端代理模式（请求不带 Key）')+'。页面源码不含任何密钥。</p>';
   h+=`<div class="card"><h2>🤖 AI 判分设置（过程作答 + 拍照识别）</h2>
-    <p class="muted" style="font-size:13px">应用题支持分步写过程与<b>拍照上传手写过程</b>。本地先按最终答案自动判分；无法识别时调用大模型判定。已预置家庭网关配置，开箱即用；拍照识别需选<b>视觉模型</b>（带 👁 标记）。</p>
+    <p class="muted" style="font-size:13px">应用题支持分步写过程与<b>拍照上传手写过程</b>。本地先按最终答案自动判分；无法识别时调用大模型判定。拍照识别需选<b>视觉模型</b>（带 👁 标记）。未配置时自动降级为按最终答案判分。</p>
+    ${aiHint}
     <input class="ansin" id="aiEndpoint" placeholder="接口地址，如 http://192.168.31.88:3201/v1/chat/completions" autocomplete="off" style="margin-bottom:8px;font-size:12px">
-    <input class="ansin" id="aiKey" type="password" placeholder="API Key" autocomplete="off" style="margin-bottom:8px;font-size:12px">
+    <div class="pwdwrap" style="margin-bottom:8px"><input class="ansin" id="aiKey" type="password" autocomplete="new-password" style="font-size:12px"><button type="button" class="pwd-eye" onclick="togglePwd('aiKey',this)" title="显示/隐藏">👁</button></div>
     <input class="ansin" id="aiModel" list="aiModelList" placeholder="判分模型（下拉选择或输入）" autocomplete="off" style="margin-bottom:8px;font-size:12px">
     <datalist id="aiModelList">${AI_MODELS.map(function(m){return '<option value="'+m.id+'">'+m.d+'</option>'}).join('')}</datalist>
     <p class="muted" style="font-size:12px;margin-top:0" id="aiModelDesc"></p>
     <div class="grid2"><button class="btn" onclick="saveAIcfg()">💾 保存配置</button><button class="btn plain" onclick="testAI()">🔌 测试连通</button></div>
     <div style="margin-top:8px"><button class="btn plain" style="width:100%;font-size:12px" onclick="fetchAIModels()">🔄 从网关获取模型列表（/v1/models）</button></div>
-    <button class="btn plain" style="width:100%;margin-top:8px;font-size:12px" onclick="resetAIcfg()">↩ 恢复默认家庭网关配置</button>
+    <div class="grid2" style="margin-top:8px"><button class="btn plain" style="font-size:12px" onclick="clearAIKey()">🗑 清除 Key（代理模式）</button><button class="btn plain" style="font-size:12px" onclick="resetAIcfg()">↩ 清空全部配置</button></div>
     <div id="aiMsg" style="min-height:18px;font-size:13px;font-weight:700;margin-top:6px"></div></div>`;
   app.innerHTML=h;
-  document.getElementById('aiEndpoint').value=ai.endpoint||'';
-  document.getElementById('aiModel').value=ai.model||'';
-  document.getElementById('aiKey').value=ai.key||'';
+  document.getElementById('aiEndpoint').value=ai?ai.endpoint:DEFAULT_AI.endpoint;
+  document.getElementById('aiModel').value=ai?ai.model:DEFAULT_AI.model;
+  /* 安全：绝不把已保存的 Key 明文写回 DOM */
+  var ki=document.getElementById('aiKey');
+  ki.value='';
+  ki.placeholder=first?'首次配置：粘贴 API Key（或留空走服务端代理）'
+                      :'已保存（尾号 '+(ai.key?ai.key.slice(-4):'无')+'）· 留空保持不变';
   updateAIModelDesc();
   document.getElementById('aiModel').addEventListener('input',updateAIModelDesc);
 };
@@ -2119,8 +2127,8 @@ function answer(optIdx,free){
     fb0.className='fb';
     if(window._photoData){
       var cfg0=getAIcfg();
-      if(!cfg0||!cfg0.endpoint||!cfg0.key||!cfg0.model){
-        fb0.innerHTML='💭 <b>照片已收到，但尚未配置 AI 判分。</b><br>请让管理员在「管理员面板 → 🤖 AI 判分设置」里配置<b>支持图片识别的视觉模型</b>（如 qwen2.5-vl、gpt-4o），配置后即可拍照判分。也可以在下方文字框直接输入答案提交。';
+      if(!isAIReady(cfg0)){
+        fb0.innerHTML='💭 <b>照片已收到，但 AI 判分尚未配置。</b><br>请管理员在「管理员面板 → 🤖 AI 判分设置」<b>首次填写 API Key</b>并选择<b>支持图片识别的视觉模型</b>（如 qwen2.5-vl、gpt-4o），配置后即可拍照判分。也可以在下方文字框直接输入答案提交。';
         window._photoData=null;  /* 清照片，后续文字提交走文本判分 */
         window._answered=false;  /* 允许改用文字作答 */
         return;
@@ -2187,10 +2195,14 @@ function procLocalGrade(q,text){
   if(uv===null||cv===null)return {level:'none'};
   return {level:Math.abs(uv-cv)<1e-9?'ok':'mismatch'};
 }
-/* AI 配置（管理员面板设置，存 localStorage） */
+/* AI 配置：页面源码零密钥。首次使用由管理员在「管理员面板 → 🤖 AI 判分设置」填写，
+   Key 只存当前浏览器 localStorage，不写进页面、不进导出的用户备份、不随页面下发。
+   「服务端代理模式」：Key 留空，请求不带 Authorization，由 NAS 反向代理在服务端注入。 */
 var AIKEY='qd6_ai';
-/* 默认家庭网关（OpenAI 兼容），开箱即用；面板可改 */
-var DEFAULT_AI={endpoint:'http://192.168.31.88:3201/v1/chat/completions',key:'****************',model:'qwen2.5-vl-72b'};
+/* 推荐值（非敏感）：仅用于管理员面板预填，未点保存前不生效 */
+var DEFAULT_AI={endpoint:'http://192.168.31.88:3201/v1/chat/completions',model:'qwen2.5-vl-72b'};
+function isAIReady(c){return !!(c&&c.endpoint&&c.model)}
+function aiHeaders(c){var h={'Content-Type':'application/json'};if(c&&c.key)h.Authorization='Bearer '+c.key;return h}
 /* 内置推荐模型（从网关 320 个模型中挑选；👁=支持图片识别可拍照判分） */
 var AI_MODELS=[
  {id:'qwen2.5-vl-72b',d:'👁 推荐 · 视觉+文本（拍照判分首选，家里验证最稳）'},
@@ -2204,7 +2216,7 @@ var AI_MODELS=[
  {id:'gpt-4.1-mini',d:'仅文本（拍照不可用）'},
  {id:'auto',d:'网关自动路由（模型不确定，备用）'}
 ];
-function getAIcfg(){try{var c=JSON.parse(lsGet(AIKEY));if(c&&c.endpoint)return c}catch(e){}return DEFAULT_AI}
+function getAIcfg(){try{var c=JSON.parse(lsGet(AIKEY));if(c&&c.endpoint&&c.model)return c}catch(e){}return null}
 function updateAIModelDesc(){
   var v=(document.getElementById('aiModel').value||'').trim();
   var m=AI_MODELS.find(function(x){return x.id===v});
@@ -2214,7 +2226,8 @@ function updateAIModelDesc(){
 /* 从网关动态拉取模型列表填充下拉 */
 function fetchAIModels(){
   var ep=(document.getElementById('aiEndpoint').value||'').trim();
-  var ke=(document.getElementById('aiKey').value||'').trim();
+  /* 输入框不回显明文；留空时沿用已保存的 Key（仅本次请求使用，不写入 DOM） */
+  var ke=(document.getElementById('aiKey').value||'').trim()||((getAIcfg()||{}).key||'');
   var m=document.getElementById('aiMsg');
   if(!ep){m.style.color='#C0392B';m.textContent='✕ 请先填接口地址';return}
   var base=ep.replace(/\/chat\/completions\/?$/,'');
@@ -2237,29 +2250,36 @@ function saveAIcfg(){
   if(ep&&!/\/chat\/completions$/.test(ep.replace(/\/+$/,'').replace(/\/v1$/,'/v1/chat/completions'))&&!/chat\/completions$/.test(ep)){
     m.style.color='#C0392B';m.textContent='✕ 接口地址需以 /chat/completions 结尾（OpenAI 兼容格式）';return;
   }
-  if(ep&&ke&&mo){
-    lsSet(AIKEY,JSON.stringify({endpoint:ep,model:mo,key:ke}));
-    m.style.color='#1E8449';m.textContent='✓ 已保存';
-  }else{
-    lsRm(AIKEY);
-    m.style.color='#1E8449';m.textContent='✓ 已恢复默认家庭网关配置（开箱即用）';
-  }
+  if(!ep||!mo){m.style.color='#C0392B';m.textContent='✕ 请填写接口地址和判分模型';return}
+  var old=getAIcfg()||{};
+  var key=ke||old.key||'';   /* 输入框留空 = 沿用已保存的 Key（明文不回显） */
+  lsSet(AIKEY,JSON.stringify({endpoint:ep,model:mo,key:key}));
+  var ki=document.getElementById('aiKey');ki.value='';
+  ki.placeholder=key?'已保存（尾号 '+key.slice(-4)+'）· 留空保持不变':'服务端代理模式 · 未存放 Key';
+  m.style.color='#1E8449';
+  m.textContent=key?'✓ 已保存（Key 仅存本机浏览器，页面源码不含密钥）'
+                   :'✓ 已保存为服务端代理模式（请求不带 Key，需 NAS 侧注入）';
+}
+/* 清除本机 Key，切换为服务端代理模式（保留接口地址与模型） */
+function clearAIKey(){
+  var c=getAIcfg(),m=document.getElementById('aiMsg');
+  if(!c){m.style.color='#C0392B';m.textContent='✕ 当前没有已保存的配置';return}
+  lsSet(AIKEY,JSON.stringify({endpoint:c.endpoint,model:c.model,key:''}));
+  var k=document.getElementById('aiKey');k.value='';k.placeholder='已清除 Key · 由服务端代理注入';
+  m.style.color='#1E8449';m.textContent='✓ 已清除本机 Key，切换为服务端代理模式';
 }
 function resetAIcfg(){
   lsRm(AIKEY);
-  document.getElementById('aiEndpoint').value=DEFAULT_AI.endpoint;
-  document.getElementById('aiModel').value=DEFAULT_AI.model;
-  document.getElementById('aiKey').value=DEFAULT_AI.key;
-  updateAIModelDesc();
+  go('admin');   /* 重渲染以显示「首次配置」引导 */
   var m=document.getElementById('aiMsg');
-  m.style.color='#1E8449';m.textContent='✓ 已恢复默认家庭网关配置（qwen2.5-vl-72b）';
+  m.style.color='#1E8449';m.textContent='✓ 已清空配置：AI 判分停用，应用题自动按最终答案判分';
 }
 function testAI(){
   var cfg=getAIcfg(),m=document.getElementById('aiMsg');
-  if(!cfg){m.style.color='#C0392B';m.textContent='✕ 请先保存 AI 配置';return}
+  if(!isAIReady(cfg)){m.style.color='#C0392B';m.textContent='✕ 请先在管理员面板填写 API Key 并保存配置';return}
   m.style.color='var(--sub)';m.textContent='⏳ 测试中…';
   fetch(cfg.endpoint,{method:'POST',
-    headers:{'Content-Type':'application/json',Authorization:'Bearer '+cfg.key},
+    headers:aiHeaders(cfg),
     body:JSON.stringify({model:cfg.model,messages:[{role:'user',content:'回复 OK 两个字母'}],temperature:0,max_tokens:10})})
   .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
   .then(function(j){m.style.color='#1E8449';m.textContent='✓ 连通正常：'+String((j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'').slice(0,20)})
@@ -2286,7 +2306,7 @@ function callLLM(q,user,cfg,photo){
     ?[{type:'text',text:prompt},{type:'image_url',image_url:{url:photo}}]
     :prompt;
   return fetch(cfg.endpoint,{method:'POST',
-    headers:{'Content-Type':'application/json',Authorization:'Bearer '+cfg.key},
+    headers:aiHeaders(cfg),
     body:JSON.stringify({model:cfg.model,messages:[{role:'user',content:msgContent}],temperature:0,max_tokens:photo?500:300})})
   .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
   .then(function(j){
@@ -2301,7 +2321,7 @@ function callLLM(q,user,cfg,photo){
 function gradePhoto(q,user,photo,cb){
   if(!hasPerm('ai')){return cb({correct:false,feedback:'当前账号未授权 AI 拍照判分，请改用文字作答或联系管理员开通。',recognized:null})}
   var cfg=getAIcfg();
-  if(!cfg){return cb({correct:false,feedback:'未配置 AI，无法识别照片',recognized:null})}
+  if(!isAIReady(cfg)){return cb({correct:false,feedback:'AI 判分未配置，无法识别照片。请管理员在「管理员面板 → 🤖 AI 判分设置」首次配置 API Key 与视觉模型；也可改用文字作答。',recognized:null})}
   callLLM(q,user,cfg,photo)
     .then(function(r){cb(r)})
     .catch(function(e){
@@ -2318,10 +2338,10 @@ function gradeAnswer(q,user,cb){
     return cb({correct:false,feedback:msg0});
   }
   var cfg=getAIcfg();
-  if(!cfg||!cfg.endpoint||!cfg.key||!cfg.model){
+  if(!isAIReady(cfg)){
     var msg=local.level==='mismatch'
       ?'按最终答案判定为不正确。'
-      :'AI 判分暂不可用，无法识别过程性作答。请至少写明最终答案（如「答：48 平方米」）。';
+      :'AI 判分未配置（请管理员在「管理员面板 → 🤖 AI 判分设置」首次填写 API Key），已按最终答案判定。请至少写明最终答案（如「答：48 平方米」）。';
     return cb({correct:false,feedback:msg});
   }
   callLLM(q,user,cfg)
