@@ -144,6 +144,16 @@ function checkAns(q,user){
 /* ───────── 用户系统（注册/登录/管理员）─────────
    存储：localStorage 永久保存 + 双备份快照防覆盖 + 管理员可导出 JSON 文件兜底
    安全：密码不明文存储——SHA-256(随机盐 + 密码) 哈希（纯 JS 实现，兼容 http 环境） */
+/* ───────── 存储可用性探测与安全包装 ─────────
+   IDE 预览面板/隐私模式会禁用 localStorage（写入抛 SecurityError）。
+   探测失败 → 自动降级为内存存储：应用照常运行，但数据仅本次会话有效，页面明确提示。 */
+var LS_OK=true,LS_MEM={};
+function lsProbe(){try{localStorage.setItem('__ls_probe','1');localStorage.removeItem('__ls_probe');return true}catch(e){return false}}
+LS_OK=lsProbe();
+function lsGet(k){if(!LS_OK&&lsProbe())LS_OK=true;if(LS_OK){try{return localStorage.getItem(k)}catch(e){LS_OK=false}}return Object.prototype.hasOwnProperty.call(LS_MEM,k)?LS_MEM[k]:null}
+function lsSet(k,v){if(!LS_OK&&lsProbe())LS_OK=true;if(LS_OK){try{localStorage.setItem(k,v);return true}catch(e){LS_OK=false}}LS_MEM[k]=String(v);return false}
+function lsRm(k){if(LS_OK){try{localStorage.removeItem(k)}catch(e){}}delete LS_MEM[k]}
+function lsWarn(){return '⚠ 当前浏览器环境不支持本地存储（常见于 IDE 预览面板、隐私模式），数据<b>仅保存在本次会话中</b>——刷新即丢失。请用系统浏览器（Chrome/Edge）打开本页或访问 NAS 网址，才能永久保存。'}
 var UKEY='qd6_users';        /* 用户表 */
 var CKEY='qd6_session';      /* 当前登录会话 */
 var BKEY1='qd6_users_bak1';  /* 备份快照 1（每次写入前滚动） */
@@ -202,26 +212,26 @@ function hashPass(salt,pass){return sha256(str2utf8(salt+'::'+pass))}
 
 /* 用户表读写（带双备份与写入保护） */
 function loadUsers(){
-  try{var v=JSON.parse(localStorage.getItem(UKEY));if(v&&v.users)return v}catch(e){}
+  try{var v=JSON.parse(lsGet(UKEY));if(v&&v.users)return v}catch(e){}
   /* 主表损坏/丢失 → 尝试双备份恢复 */
   for(var k of [BKEY1,BKEY2]){
-    try{var b=JSON.parse(localStorage.getItem(k));if(b&&b.users){console.warn('用户表从备份恢复:',k);return b}}catch(e){}
+    try{var b=JSON.parse(lsGet(k));if(b&&b.users){console.warn('用户表从备份恢复:',k);return b}}catch(e){}
   }
   return {ver:2,users:[]};
 }
 function saveUsers(db){
   /* 防覆盖：写入前把旧主表滚入备份（B1←旧值，B2←原B1） */
   try{
-    var old=localStorage.getItem(UKEY);
-    if(old){localStorage.setItem(BKEY2,localStorage.getItem(BKEY1)||old||'');localStorage.setItem(BKEY1,old)}
+    var old=lsGet(UKEY);
+    if(old){lsSet(BKEY2,lsGet(BKEY1)||old||'');lsSet(BKEY1,old)}
     db.savedAt=Date.now();
-    localStorage.setItem(UKEY,JSON.stringify(db));
+    lsSet(UKEY,JSON.stringify(db));
     return true;
   }catch(e){console.error('用户表保存失败(存储满?)',e);return false}
 }
 var USERS=loadUsers();
 var CUR=null;  /* 当前登录用户 {phone,role,name} 或 null */
-try{CUR=JSON.parse(localStorage.getItem(CKEY))}catch(e){CUR=null}
+try{CUR=JSON.parse(lsGet(CKEY))}catch(e){CUR=null}
 
 /* 预置管理员（仅当不存在时创建；密码哈希存储，不落明文） */
 /* 管理员迁移：若存在旧版预置管理员（13800000000 且从未有真实注册行为），自动移除 */
@@ -231,7 +241,7 @@ try{CUR=JSON.parse(localStorage.getItem(CKEY))}catch(e){CUR=null}
   var legacy=USERS.users.findIndex(function(x){return x.phone==='13800000000'&&x.role==='admin'});
   if(legacy>=0){USERS.users.splice(legacy,1);changed=true}
   /* 2. 若旧管理员会话还挂着，清掉 */
-  try{var sess=JSON.parse(localStorage.getItem(CKEY));if(sess&&sess.phone==='13800000000'&&sess.role==='admin'){localStorage.removeItem(CKEY);CUR=null}}catch(e){}
+  try{var sess=JSON.parse(lsGet(CKEY));if(sess&&sess.phone==='13800000000'&&sess.role==='admin'){lsRm(CKEY);CUR=null}}catch(e){}
   /* 3. 预置新管理员 */
   if(!USERS.users.some(function(x){return x.phone===ADMIN_PHONE})){
     var salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
@@ -255,19 +265,19 @@ function passIssue(p){
 }
 function nowStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0')}
 function findUser(phone){return USERS.users.find(function(x){return x.phone===phone})}
-function setSession(u){CUR=u;try{localStorage.setItem(CKEY,JSON.stringify(u))}catch(e){}}
-function clearSession(){CUR=null;try{localStorage.removeItem(CKEY)}catch(e){}}
+function setSession(u){CUR=u;try{lsSet(CKEY,JSON.stringify(u))}catch(e){}}
+function clearSession(){CUR=null;lsRm(CKEY)}
 function isAdmin(){return CUR&&CUR.role==='admin'}
 
 /* 每个用户独立的学习存档键 */
 function userKey(phone){return 'qd6_state_'+phone}
 function load(){  /* 依据登录态加载对应存档 */
   var def={name:'',lit:{},st:{},wrong:[],days:{},t0:Date.now()};
-  if(CUR){try{var v=JSON.parse(localStorage.getItem(userKey(CUR.phone)));if(v&&typeof v==='object')return v}catch(e){}return def}
-  try{var g=JSON.parse(localStorage.getItem(KEY));if(g&&typeof g==='object')return g}catch(e){}
+  if(CUR){try{var v=JSON.parse(lsGet(userKey(CUR.phone)));if(v&&typeof v==='object')return v}catch(e){}return def}
+  try{var g=JSON.parse(lsGet(KEY));if(g&&typeof g==='object')return g}catch(e){}
   return def;
 }
-function save(){try{localStorage.setItem(CUR?userKey(CUR.phone):KEY,JSON.stringify(S))}catch(e){}}
+function save(){try{lsSet(CUR?userKey(CUR.phone):KEY,JSON.stringify(S))}catch(e){}}
 
 /* ───────── 注册 / 登录（界面与逻辑）───────── */
 function togglePwd(id,btn){
@@ -294,7 +304,10 @@ function doRegister(){
   var salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
   var user={phone:ph,role:'user',name:nm||('同学'+ph.slice(-4)),salt:salt,hash:hashPass(salt,p1),regAt:nowStr(),lastLogin:null};
   USERS.users.push(user);
-  if(!saveUsers(USERS))return fail('保存失败：本机存储空间不足，请联系管理员导出备份清理');
+  if(!saveUsers(USERS)){
+    return fail(LS_OK?'保存失败：本机存储空间不足，请联系管理员导出备份清理'
+                   :'当前浏览器环境不支持本地存储（IDE 预览面板/隐私模式会这样）。注册已在本次会话内生效（刷新会丢失）；请改用系统浏览器打开以永久保存。');
+  }
   msg.style.color='#1E8449';msg.textContent='✓ 注册成功！正在进入…';
   setSession({phone:ph,role:'user',name:user.name});
   S=load();S.name=user.name;save();
@@ -331,7 +344,7 @@ function doLogout(){
 /* ───────── 管理员面板 ───────── */
 function adminReport(phone){
   var u=findUser(phone);if(!u)return;
-  var sv=null;try{sv=JSON.parse(localStorage.getItem(userKey(phone)))}catch(e){}
+  var sv=null;try{sv=JSON.parse(lsGet(userKey(phone)))}catch(e){}
   var h=`<div class="topbar"><button class="backbtn" onclick="go('admin')">‹ 面板</button><h1>📊 ${u.name} 的学习报告</h1></div>`;
   h+=`<div class="card"><p>手机号：${u.phone}｜注册：${u.regAt}｜最近登录：${u.lastLogin||'—'}</p>`;
   if(!sv){h+='<p class="muted">该用户还没有练习记录。</p>'}
@@ -371,7 +384,7 @@ function importUsers(){
       var db=obj.db||obj;
       if(!db.users||!Array.isArray(db.users))throw new Error('格式不对');
       /* 保护：导入前先备份当前主表 */
-      try{var old=localStorage.getItem(UKEY);if(old){localStorage.setItem(BKEY1,old)} }catch(e){}
+      try{var old=lsGet(UKEY);if(old){lsSet(BKEY1,old)} }catch(e){}
       USERS=loadUsers();
       /* 合并：按手机号去重，导入的覆盖同号旧档（管理员显式操作） */
       db.users.forEach(function(u){
@@ -1392,7 +1405,7 @@ VIEWS.admin=function(){
   <table class="rep"><tr><th>手机号</th><th>昵称</th><th>角色</th><th>注册时间</th><th>最近登录</th><th>练习/正确</th><th>点亮</th><th>报告</th></tr>`;
   us.forEach(function(u){
     var st={att:0,cor:0},lit=0;
-    try{var sv=JSON.parse(localStorage.getItem(userKey(u.phone)));if(sv){st=sv.st[Object.keys(sv.st)[0]]||st;
+    try{var sv=JSON.parse(lsGet(userKey(u.phone)));if(sv){st=sv.st[Object.keys(sv.st)[0]]||st;
       var att=0,cor=0;Object.keys(sv.st||{}).forEach(function(k){att+=sv.st[k].att;cor+=sv.st[k].cor});
       st={att:att,cor:cor};
       Object.keys(sv.lit||{}).forEach(function(k){if(sv.lit[k])lit++});
@@ -1423,6 +1436,7 @@ VIEWS.admin=function(){
 
 VIEWS.auth=function(){
   var h=`<div class="topbar"><button class="backbtn" onclick="go('home')">‹ 首页</button><h1>${AUTH_MODE==='reg'?'📝 注册新用户':'🔑 用户登录'}</h1></div>
+  ${LS_OK?'':'<div class="card" style="border:2px solid #E67E22"><p style="font-size:13.5px;font-weight:700;color:var(--orange)">'+lsWarn()+'</p></div>'}
   <div class="card">
     ${AUTH_MODE==='reg'
       ?`<p class="muted">手机号注册（11 位、以 1 开头）；密码规则：<b>恰好 10 位</b>，且必须同时包含<b>数字、大写字母、小写字母、特殊符号</b>。</p>
@@ -1440,7 +1454,7 @@ VIEWS.auth=function(){
         <button class="btn" style="width:100%" onclick="doLogin()">登录</button>
         <p class="muted" style="margin-top:10px">还没有账号？<a href="javascript:void(0)" onclick="AUTH_MODE='reg';go('auth')" style="color:var(--blue)">注册一个</a></p>`}
   </div>
-  <p class="footer-tip">注册信息永久保存在本机存储中（密码经加盐哈希，不存明文），管理员可导出备份文件。</p>`;
+  <p class="footer-tip">${LS_OK?'注册信息永久保存在本机存储中（密码经加盐哈希，不存明文），管理员可导出备份文件。':'当前环境数据不持久：刷新后会丢失。请改用系统浏览器打开本页。'}</p>`;
   app.innerHTML=h;
 };
 
@@ -1448,8 +1462,9 @@ VIEWS.auth=function(){
 VIEWS.home=function(){
   /* 登录墙：未登录只给登录/注册入口（旧游客存档保留，登录后可用） */
   if(!CUR){
-    var g=0;try{var gg=JSON.parse(localStorage.getItem(KEY));if(gg&&gg.name)g=1}catch(e){}
-    app.innerHTML=`<div class="card">
+    var g=0;try{var gg=JSON.parse(lsGet(KEY));if(gg&&gg.name)g=1}catch(e){}
+    app.innerHTML=`${LS_OK?'':'<div class="card" style="border:2px solid #E67E22"><p style="font-size:13.5px;font-weight:700;color:var(--orange)">'+lsWarn()+'</p></div>'}
+    <div class="card">
       <div class="bigday"><b>🙋</b><br><span class="muted">欢迎来到六上数学乐园</span></div>
       <p style="text-align:center" class="muted">青岛版（六三制）六年级上册 · 2026 年 7 月版同步</p>
     </div>
@@ -1722,7 +1737,7 @@ function procLocalGrade(q,text){
 }
 /* AI 配置（管理员面板设置，存 localStorage） */
 var AIKEY='qd6_ai';
-function getAIcfg(){try{return JSON.parse(localStorage.getItem(AIKEY))}catch(e){return null}}
+function getAIcfg(){try{return JSON.parse(lsGet(AIKEY))}catch(e){return null}}
 function saveAIcfg(){
   var ep=(document.getElementById('aiEndpoint').value||'').trim();
   var mo=(document.getElementById('aiModel').value||'').trim();
@@ -1732,10 +1747,10 @@ function saveAIcfg(){
     m.style.color='#C0392B';m.textContent='✕ 接口地址需以 /chat/completions 结尾（OpenAI 兼容格式）';return;
   }
   if(ep&&ke&&mo){
-    localStorage.setItem(AIKEY,JSON.stringify({endpoint:ep,model:mo,key:ke}));
+    lsSet(AIKEY,JSON.stringify({endpoint:ep,model:mo,key:ke}));
     m.style.color='#1E8449';m.textContent='✓ 已保存';
   }else{
-    localStorage.removeItem(AIKEY);
+    lsRm(AIKEY);
     m.style.color='#1E8449';m.textContent='✓ 已清空 AI 配置（应用题将只按最终答案判分）';
   }
 }
