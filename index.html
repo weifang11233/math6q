@@ -1419,19 +1419,25 @@ VIEWS.admin=function(){
     <div style="margin-top:8px"><input type="file" id="impFile" accept=".json" style="width:100%;font-size:12px"></div>
     <button class="btn plain" style="width:100%;margin-top:8px" onclick="importUsers()">⬆ 从备份文件恢复</button>
     <div id="admMsg" style="min-height:18px;font-size:13px;font-weight:700;color:var(--green);margin-top:6px"></div></div>`;
-  /* AI 判分设置（应用题过程作答识别） */
+  /* AI 判分设置（应用题过程作答识别 + 拍照识别） */
   var ai=getAIcfg()||{endpoint:'',model:'',key:''};
-  h+=`<div class="card"><h2>🤖 AI 判分设置（应用题过程作答）</h2>
-    <p class="muted" style="font-size:13px">应用题支持学生分步写计算过程。本地先按最终答案自动判分；无法识别时调用下方大模型接口判定。填 OpenAI 兼容接口（家庭内网网关或云服务均可），Key 保存在本机。</p>
-    <input class="ansin" id="aiEndpoint" placeholder="接口地址，如 https://api.xx.com/v1/chat/completions" autocomplete="off" style="margin-bottom:8px;font-size:12px">
-    <input class="ansin" id="aiModel" placeholder="模型名，如 qwen2.5-72b-instruct" autocomplete="off" style="margin-bottom:8px;font-size:12px">
-    <input class="ansin" id="aiKey" type="password" placeholder="API Key" autocomplete="off" style="margin-bottom:10px;font-size:12px">
+  h+=`<div class="card"><h2>🤖 AI 判分设置（过程作答 + 拍照识别）</h2>
+    <p class="muted" style="font-size:13px">应用题支持分步写过程与<b>拍照上传手写过程</b>。本地先按最终答案自动判分；无法识别时调用大模型判定。已预置家庭网关配置，开箱即用；拍照识别需选<b>视觉模型</b>（带 👁 标记）。</p>
+    <input class="ansin" id="aiEndpoint" placeholder="接口地址，如 http://192.168.31.88:3201/v1/chat/completions" autocomplete="off" style="margin-bottom:8px;font-size:12px">
+    <input class="ansin" id="aiKey" type="password" placeholder="API Key" autocomplete="off" style="margin-bottom:8px;font-size:12px">
+    <input class="ansin" id="aiModel" list="aiModelList" placeholder="判分模型（下拉选择或输入）" autocomplete="off" style="margin-bottom:8px;font-size:12px">
+    <datalist id="aiModelList">${AI_MODELS.map(function(m){return '<option value="'+m.id+'">'+m.d+'</option>'}).join('')}</datalist>
+    <p class="muted" style="font-size:12px;margin-top:0" id="aiModelDesc"></p>
     <div class="grid2"><button class="btn" onclick="saveAIcfg()">💾 保存配置</button><button class="btn plain" onclick="testAI()">🔌 测试连通</button></div>
+    <div style="margin-top:8px"><button class="btn plain" style="width:100%;font-size:12px" onclick="fetchAIModels()">🔄 从网关获取模型列表（/v1/models）</button></div>
+    <button class="btn plain" style="width:100%;margin-top:8px;font-size:12px" onclick="resetAIcfg()">↩ 恢复默认家庭网关配置</button>
     <div id="aiMsg" style="min-height:18px;font-size:13px;font-weight:700;margin-top:6px"></div></div>`;
   app.innerHTML=h;
   document.getElementById('aiEndpoint').value=ai.endpoint||'';
   document.getElementById('aiModel').value=ai.model||'';
   document.getElementById('aiKey').value=ai.key||'';
+  updateAIModelDesc();
+  document.getElementById('aiModel').addEventListener('input',updateAIModelDesc);
 };
 
 VIEWS.auth=function(){
@@ -1786,7 +1792,46 @@ function procLocalGrade(q,text){
 }
 /* AI 配置（管理员面板设置，存 localStorage） */
 var AIKEY='qd6_ai';
-function getAIcfg(){try{return JSON.parse(lsGet(AIKEY))}catch(e){return null}}
+/* 默认家庭网关（OpenAI 兼容），开箱即用；面板可改 */
+var DEFAULT_AI={endpoint:'http://192.168.31.88:3201/v1/chat/completions',key:'****************',model:'qwen2.5-vl-72b'};
+/* 内置推荐模型（从网关 320 个模型中挑选；👁=支持图片识别可拍照判分） */
+var AI_MODELS=[
+ {id:'qwen2.5-vl-72b',d:'👁 推荐 · 视觉+文本（拍照判分首选，家里验证最稳）'},
+ {id:'qwen-3-vl-235b-a22b-instruct',d:'👁 视觉+文本 · 新一代大杯'},
+ {id:'qwen-3-vl-30b-a3b-instruct',d:'👁 视觉+文本 · 轻快'},
+ {id:'gpt-4o',d:'👁 视觉+文本 · OpenAI 经典'},
+ {id:'gpt-4o-mini',d:'👁 视觉+文本 · 快速便宜'},
+ {id:'gemini-2.5-flash',d:'👁 视觉+文本 · Google 快速'},
+ {id:'command-a-vision',d:'👁 视觉+文本 · Cohere'},
+ {id:'qwen-3-14b',d:'仅文本（拍照不可用）'},
+ {id:'gpt-4.1-mini',d:'仅文本（拍照不可用）'},
+ {id:'auto',d:'网关自动路由（模型不确定，备用）'}
+];
+function getAIcfg(){try{var c=JSON.parse(lsGet(AIKEY));if(c&&c.endpoint)return c}catch(e){}return DEFAULT_AI}
+function updateAIModelDesc(){
+  var v=(document.getElementById('aiModel').value||'').trim();
+  var m=AI_MODELS.find(function(x){return x.id===v});
+  var el=document.getElementById('aiModelDesc');
+  if(el)el.textContent=m?('▸ '+m.d):(v?'▸ 自定义模型':'');
+}
+/* 从网关动态拉取模型列表填充下拉 */
+function fetchAIModels(){
+  var ep=(document.getElementById('aiEndpoint').value||'').trim();
+  var ke=(document.getElementById('aiKey').value||'').trim();
+  var m=document.getElementById('aiMsg');
+  if(!ep){m.style.color='#C0392B';m.textContent='✕ 请先填接口地址';return}
+  var base=ep.replace(/\/chat\/completions\/?$/,'');
+  m.style.color='var(--sub)';m.textContent='⏳ 获取模型列表…';
+  fetch(base+'/models',{headers:ke?{Authorization:'Bearer '+ke}:{}})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
+  .then(function(j){
+    var ids=(j.data||[]).map(function(x){return x.id}).sort();
+    var dl=document.getElementById('aiModelList');
+    dl.innerHTML=ids.map(function(id){return '<option value="'+id+'">'}).join('');
+    m.style.color='#1E8449';m.textContent='✓ 获取到 '+ids.length+' 个模型，已填入下拉列表（判分推荐带 vl/vision 的视觉模型）';
+  })
+  .catch(function(e){m.style.color='#C0392B';m.textContent='✕ 获取失败：'+e.message});
+}
 function saveAIcfg(){
   var ep=(document.getElementById('aiEndpoint').value||'').trim();
   var mo=(document.getElementById('aiModel').value||'').trim();
@@ -1800,8 +1845,17 @@ function saveAIcfg(){
     m.style.color='#1E8449';m.textContent='✓ 已保存';
   }else{
     lsRm(AIKEY);
-    m.style.color='#1E8449';m.textContent='✓ 已清空 AI 配置（应用题将只按最终答案判分）';
+    m.style.color='#1E8449';m.textContent='✓ 已恢复默认家庭网关配置（开箱即用）';
   }
+}
+function resetAIcfg(){
+  lsRm(AIKEY);
+  document.getElementById('aiEndpoint').value=DEFAULT_AI.endpoint;
+  document.getElementById('aiModel').value=DEFAULT_AI.model;
+  document.getElementById('aiKey').value=DEFAULT_AI.key;
+  updateAIModelDesc();
+  var m=document.getElementById('aiMsg');
+  m.style.color='#1E8449';m.textContent='✓ 已恢复默认家庭网关配置（qwen2.5-vl-72b）';
 }
 function testAI(){
   var cfg=getAIcfg(),m=document.getElementById('aiMsg');
@@ -1865,7 +1919,7 @@ function gradeAnswer(q,user,cb){
   if(!cfg||!cfg.endpoint||!cfg.key||!cfg.model){
     var msg=local.level==='mismatch'
       ?'按最终答案判定为不正确。'
-      :'未配置 AI 判分，无法识别过程性作答。请至少写明最终答案（如「答：48 平方米」）。';
+      :'AI 判分暂不可用，无法识别过程性作答。请至少写明最终答案（如「答：48 平方米」）。';
     return cb({correct:false,feedback:msg});
   }
   callLLM(q,user,cfg)
