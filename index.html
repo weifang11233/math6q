@@ -1687,9 +1687,12 @@ VIEWS.quiz=function(){
     });
     h+=`<input type="hidden" id="freeIn">`;
   }else if(q.app){
-    /* 应用题：支持分步写计算过程（多行），判分=本地数字提取 → AI 识别 */
+    /* 应用题：分步写过程（多行）或拍照上传手写过程，判分=本地数字提取 → AI 识别（含图片识别） */
     h+=`<p class="muted" style="font-size:13px">✍ 可以分步写计算过程（每步一行），最后一行写「答：…」。只写最终答案也可以。</p>
       <textarea class="ansin" id="freeIn" rows="4" placeholder="例：&#10;总份数：3+2=5&#10;每份：50÷5=10（平方米）&#10;黄瓜：10×2=20（平方米）&#10;答：黄瓜 20 平方米" style="width:100%;resize:vertical;font-family:inherit"></textarea>
+      <div style="margin-top:8px"><input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(this)">
+        <button class="btn plain" style="width:100%" onclick="document.getElementById('photoIn').click()">📷 拍照上传手写解题过程</button>
+        <div id="photoPrev" style="margin-top:8px"></div></div>
       <div style="margin-top:10px"><button class="btn" style="width:100%" onclick="answer(-1,document.getElementById('freeIn').value)">提交答案</button></div>`;
   }else{
     h+=`<input class="ansin" id="freeIn" placeholder="在这里输入答案，如 3/4" autocomplete="off"
@@ -1708,14 +1711,60 @@ function answer(optIdx,free){
   else{user=String(free||'').trim()}
   window._answered=true;
   if(q.app&&!q.ops){
-    /* 应用题过程作答：两级判分（本地数字提取 → AI 识别），异步 */
+    /* 应用题过程作答：拍照优先（AI 视觉识别）→ 文本两级判分（本地数字提取 → AI） */
     var fb0=document.getElementById('fb');
-    fb0.className='fb';fb0.innerHTML='⏳ 正在判分…';
+    fb0.className='fb';
+    if(window._photoData){
+      var cfg0=getAIcfg();
+      if(!cfg0||!cfg0.endpoint||!cfg0.key||!cfg0.model){
+        fb0.innerHTML='💭 <b>照片已收到，但尚未配置 AI 判分。</b><br>请让管理员在「管理员面板 → 🤖 AI 判分设置」里配置<b>支持图片识别的视觉模型</b>（如 qwen2.5-vl、gpt-4o），配置后即可拍照判分。也可以在下方文字框直接输入答案提交。';
+        window._photoData=null;  /* 清照片，后续文字提交走文本判分 */
+        window._answered=false;  /* 允许改用文字作答 */
+        return;
+      }
+      fb0.innerHTML='⏳ AI 正在识别照片中的解题过程…';
+      gradePhoto(q,user,window._photoData,function(res){
+        window._photoData=null;
+        finishAnswer(q,!!res.correct,user,(res.recognized?'📝 <b>识别的过程：</b>'+res.recognized+'<br>':'')+(res.feedback?'🤖 <b>AI 点评：</b>'+res.feedback:null),optIdx);
+      });
+      return;
+    }
+    fb0.innerHTML='⏳ 正在判分…';
     gradeAnswer(q,user,function(res){finishAnswer(q,!!res.correct,user,res.feedback||null,optIdx)});
     return;
   }
   var correct=q.ops?(user===q.ans):checkAns(q,user);
   finishAnswer(q,!!correct,user,null,optIdx);
+}
+/* 拍照上传：压缩图片并预览（手机拍的照片可达数 MB，base64 前必须压缩） */
+function handlePhoto(inp){
+  var f=inp.files&&inp.files[0];
+  if(!f)return;
+  try{
+    var rd=new FileReader();
+    rd.onload=function(){
+      var img=new Image();
+      img.onload=function(){
+        try{
+          var max=1280,w=img.width||max,h=img.height||max;
+          if(w>max||h>max){var k=Math.min(max/w,max/h);w=Math.round(w*k);h=Math.round(h*k)}
+          var c=document.createElement('canvas');c.width=w;c.height=h;
+          c.getContext('2d').drawImage(img,0,0,w,h);
+          window._photoData=c.toDataURL('image/jpeg',0.8);
+        }catch(e){window._photoData=rd.result}  /* canvas 不可用时用原图 */
+        var pv=document.getElementById('photoPrev');
+        if(pv)pv.innerHTML='<img src="'+window._photoData+'" style="max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--line)"><p class="muted" style="font-size:12px">✓ 照片已就绪（约 '+Math.round(window._photoData.length/1365)+' KB），提交答案后 AI 会识别图中的解题过程</p>';
+      };
+      img.onerror=function(){window._photoData=rd.result;
+        var pv=document.getElementById('photoPrev');
+        if(pv)pv.innerHTML='<p class="muted" style="font-size:12px">✓ 照片已就绪，提交答案后 AI 会识别</p>';};
+      img.src=rd.result;
+    };
+    rd.readAsDataURL(f);
+  }catch(e){
+    var m=document.getElementById('photoPrev');
+    if(m)m.innerHTML='<p class="muted" style="font-size:12px;color:#C0392B">✕ 照片读取失败：'+e.message+'</p>';
+  }
 }
 /* 从多行过程作答中提取最终数值（支持分数/小数/百分数；优先"答："行） */
 function extractFinal(text){
@@ -1766,30 +1815,48 @@ function testAI(){
   .catch(function(e){m.style.color='#C0392B';m.textContent='✕ 连接失败：'+e.message});
 }
 /* AI 判分请求（OpenAI 兼容接口） */
-function callLLM(q,user,cfg){
+function callLLM(q,user,cfg,photo){
   var prompt='你是小学六年级数学老师，请判定学生的应用题作答是否正确。\n'
     +'【题目】'+q.q+'\n'
     +'【标准答案】'+q.ans+'\n'
     +'【参考解析】'+(q.exp||'无')+'\n'
-    +'【学生作答（可能包含分步计算过程）】\n'+user+'\n\n'
+    +(photo
+      ?'【学生作答】学生把解题过程写在纸上并拍照上传'+(user?'，并补充了文字：'+user:'（无文字补充）')+'。请先识别照片中的手写解题过程，再按识别内容判定。\n'
+      :'【学生作答（可能包含分步计算过程）】\n'+user+'\n')
     +'判定规则：\n'
     +'1. 只要最终答案数值正确（分数等价、单位不影响判定）即为正确，过程写法不必与标准解析一致；\n'
     +'2. 最终答案错误但过程思路正确时，判不正确，并在点评中指出错在哪一步；\n'
     +'3. 学生只写最终答案也算有效作答；\n'
     +'4. 点评用小学生能看懂的中文，不超过 60 字。\n'
-    +'只输出一行 JSON：{"correct": true 或 false, "feedback": "点评"}';
+    +(photo
+      ?'只输出一行 JSON：{"recognized": "照片中手写过程的文字转写", "correct": true 或 false, "feedback": "点评"}'
+      :'只输出一行 JSON：{"correct": true 或 false, "feedback": "点评"}');
+  var msgContent=photo
+    ?[{type:'text',text:prompt},{type:'image_url',image_url:{url:photo}}]
+    :prompt;
   return fetch(cfg.endpoint,{method:'POST',
     headers:{'Content-Type':'application/json',Authorization:'Bearer '+cfg.key},
-    body:JSON.stringify({model:cfg.model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:300})})
+    body:JSON.stringify({model:cfg.model,messages:[{role:'user',content:msgContent}],temperature:0,max_tokens:photo?500:300})})
   .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
   .then(function(j){
     var txt=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';
     var m=txt.match(/\{[\s\S]*\}/);
     var obj=m?JSON.parse(m[0]):null;
     if(!obj||typeof obj.correct!=='boolean')throw new Error('AI 返回格式异常');
-    return {correct:!!obj.correct,feedback:String(obj.feedback||'').slice(0,150)};
+    return {correct:!!obj.correct,feedback:String(obj.feedback||'').slice(0,150),recognized:photo?String(obj.recognized||'').slice(0,300):null};
   });
 }
+/* 拍照作答判分（视觉模型识别手写过程） */
+function gradePhoto(q,user,photo,cb){
+  var cfg=getAIcfg();
+  if(!cfg){return cb({correct:false,feedback:'未配置 AI，无法识别照片',recognized:null})}
+  callLLM(q,user,cfg,photo)
+    .then(function(r){cb(r)})
+    .catch(function(e){
+      cb({correct:false,feedback:'照片识别失败（'+e.message+'）。请确认接口配置的是支持图片的视觉模型，或改用文字作答。',recognized:null});
+    });
+}
+
 /* 应用题两级判分入口 */
 function gradeAnswer(q,user,cb){
   var local=procLocalGrade(q,user);
