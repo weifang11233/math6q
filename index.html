@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>六上数学乐园 · 青岛版（童趣版）</title>
-<meta name="app-version" content="v2.4.4-childlike-cloud">
+<meta name="app-version" content="v2.4.5-childlike-cloud">
 <style>
 :root{
   --bg:#F7F4EC; --card:#FFFFFF; --ink:#3A352B; --sub:#8A8474;
@@ -1386,11 +1386,16 @@ f6_budget:function(u,k){
     exp:`剩下分率 1−${t[1]}/${t[2]}=${frac(t[2]-t[1],t[2])}，${t[0]}×${frac(t[2]-t[1],t[2])}=${v}（元）。先算分率再乘总量。`};
 },
 f6_remain_frac:function(u,k){
+  /* v2.4.5 修复：原实现把「一共吃了」算成「还剩」(v=总量×(1-分率和))，
+     例 5/12+1/3、720kg 时给出 180（恰为剩余量），孩子答 540 反被判错。
+     现按问法正确计算：一共=总量×(a/b+c/d)，并加健全性断言。 */
   var t=pick([[2,5,3,5,480],[1,4,3,8,320],[3,10,1,2,600],[5,12,1,3,720]]);
-  var v=t[4]*(1-t[0]/t[1]-t[2]/t[3]);
+  var eaten=t[4]*(t[0]/t[1]+t[2]/t[3]);
+  var remain=t[4]-eaten;
+  var v=Math.round(eaten*100)/100;
   return{q:`食堂运来 ${t[4]} 千克大米，第一周吃了它的 ${t[0]}/${t[1]}，第二周吃了它的 ${t[2]}/${t[3]}。两周一共吃了多少千克？（填数）`,
-    ans:String(Math.round(v*100)/100),unit:u,kp:k,app:1,
-    exp:`先算两周一共的分率：${t[0]}/${t[1]}+${t[2]}/${t[3]}，再用总量乘：${t[4]}×两周一共的分率=${Math.round(v*100)/100}（千克）。也可以分别算每周再相加。`};
+    ans:String(v),unit:u,kp:k,app:1,
+    exp:`先算两周一共的分率：${t[0]}/${t[1]}+${t[2]}/${t[3]}=${frac(t[0]*t[3]+t[2]*t[1],t[1]*t[3])}，再用总量乘：${t[4]}×两周一共的分率=${v}（千克）。也可以分别算每周再相加。（核对：还剩 ${Math.round(remain*100)/100} 千克）`};
 },
 
 
