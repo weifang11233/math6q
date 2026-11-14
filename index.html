@@ -322,6 +322,7 @@ function doLogin(){
   if(!validPhone(ph))return fail('手机号格式不正确：必须 11 位且以 1 开头');
   var u=findUser(ph);
   if(!u)return fail('该手机号尚未注册，请先注册');
+  if(u.banned)return fail('⛔ 该账号已被封禁'+(u.banReason?'：'+u.banReason:'')+'。如有疑问请联系管理员。');
   if(u.lockUntil&&Date.now()<u.lockUntil)return fail('密码错误次数过多，账号已锁定，请 '+Math.ceil((u.lockUntil-Date.now())/60000)+' 分钟后再试');
   if(hashPass(u.salt,p)!==u.hash){
     u.failN=(u.failN||0)+1;
@@ -342,6 +343,46 @@ function doLogout(){
 }
 
 /* ───────── 管理员面板 ───────── */
+/* —— 用户管理（封禁/解封 + 模块授权）—— */
+var permChanged=false;
+function doBan(phone){
+  var u=findUser(phone);
+  if(!u||u.role==='admin')return;
+  u.banned=true;
+  u.banReason=(document.getElementById('banReason').value||'').trim().slice(0,60);
+  u.banAt=nowStr();
+  /* 踢出在线会话：清该用户独立会话痕迹（下个动作即被网关拦截） */
+  saveUsers(USERS);
+  go('admin');
+}
+function doUnban(phone){
+  var u=findUser(phone);
+  if(!u)return;
+  delete u.banned;delete u.banReason;delete u.banAt;
+  saveUsers(USERS);
+  go('userAdmin',phone);
+}
+function savePerms(phone){
+  var u=findUser(phone);
+  if(!u)return;
+  var perms={};
+  var allOn=true;
+  PERM_LIST.forEach(function(p){
+    var on=document.getElementById('perm_'+p.mod).checked;
+    perms[p.mod]=on;
+    if(!on)allOn=false;
+  });
+  if(allOn){delete u.perms}  /* 全部开启 = 未设置（默认全功能） */
+  else{u.perms=perms}
+  saveUsers(USERS);
+  var m=document.getElementById('permMsg');
+  m.textContent='✓ 已保存'+(allOn?'（全功能）':'');
+  permChanged=false;
+}
+function grantAllPerms(){
+  PERM_LIST.forEach(function(p){var el=document.getElementById('perm_'+p.mod);if(el)el.checked=true});
+  permChanged=true;
+}
 function adminReport(phone){
   var u=findUser(phone);if(!u)return;
   var sv=null;try{sv=JSON.parse(lsGet(userKey(phone)))}catch(e){}
@@ -1393,9 +1434,105 @@ var app=document.getElementById('app');
 var QS=null;   /* 当前答题会话 */
 var QS_TITLE_LAST='';   /* 连续模式续组时的标题 */
 
-function go(name,arg){if(window._autoTimer){clearInterval(window._autoTimer);window._autoTimer=null}window.scrollTo(0,0);VIEWS[name](arg)}
+/* ───────── 功能模块与权限 ───────── */
+var PERM_LIST=[
+ {mod:'units',name:'按单元学',icon:'📚'},
+ {mod:'gen',name:'智能出题器',icon:'🎲'},
+ {mod:'daily',name:'今日任务',icon:'⏰'},
+ {mod:'wrong',name:'错题本',icon:'📕'},
+ {mod:'place',name:'摸底测试',icon:'📋'},
+ {mod:'map',name:'一图看全册',icon:'🗺'},
+ {mod:'board',name:'按板块攻',icon:'🧩'},
+ {mod:'cheat',name:'速查大表',icon:'📖'},
+ {mod:'four',name:'应用题四步法',icon:'🪜'},
+ {mod:'report',name:'学习报告',icon:'📊'},
+ {mod:'ai',name:'AI 智能判分',icon:'🤖'}
+];
+/* 导航名 → 权限模块（quiz 属于触发它的模块，不单独限权） */
+var PERM_ROUTE={units:'units',unit:'units',gen:'gen',wrong:'wrong',place:'place',map:'map',board:'board',cheat:'cheat',four:'four',report:'report'};
+function curUser(){return CUR?findUser(CUR.phone):null}  /* 实时取用户最新状态（含封禁/权限） */
+function hasPerm(mod){
+  var u=curUser();
+  if(!u)return false;
+  if(u.role==='admin')return true;
+  if(!u.perms)return true;   /* 未设置过权限 = 全部允许 */
+  return u.perms[mod]!==false;
+}
+function isBanned(){var u=curUser();return !!(u&&u.banned)}
+
+function go(name,arg){
+  if(window._autoTimer){clearInterval(window._autoTimer);window._autoTimer=null}
+  /* 管理员视图保护：普通用户不可达 */
+  if((name==='admin'||name==='userAdmin')&&!isAdmin()){CUR=CUR;window.scrollTo(0,0);VIEWS.noPerm();return}
+  /* 封禁检查：实时读用户表，封禁后即使在线也会被踢出 */
+  var cu=CUR?findUser(CUR.phone):null;
+  if(cu&&cu.banned){
+    var bu=cu;CUR=null;lsRm(CKEY);S=load();
+    window.scrollTo(0,0);VIEWS.bannedView(bu);return;
+  }
+  /* 模块权限检查（管理员豁免） */
+  var pm=PERM_ROUTE[name];
+  if(pm&&!hasPerm(pm)){window.scrollTo(0,0);VIEWS.noPerm();return}
+  window.scrollTo(0,0);VIEWS[name](arg);
+}
+
 
 var VIEWS={};
+
+VIEWS.bannedView=function(u){
+  app.innerHTML=`<div class="card" style="text-align:center;border:2px solid #C0392B">
+    <h2>⛔ 账号已被封禁</h2>
+    <p style="font-size:15px">账号 <b>${u.phone}</b>（${u.name}）已被管理员封禁。</p>
+    ${u.banReason?'<p style="font-size:14px">封禁原因：'+u.banReason+'</p>':''}
+    ${u.banAt?'<p class="muted" style="font-size:12px">封禁时间：'+u.banAt+'</p>':''}
+    <p class="muted" style="font-size:13px">如有疑问请联系管理员申诉。</p></div>
+    <p class="footer-tip">你的学习数据仍完整保留，解封后可继续使用。</p>`;
+};
+function showNoPerm(){window.scrollTo(0,0);VIEWS.noPerm()}
+VIEWS.noPerm=function(){
+  app.innerHTML=`<div class="card" style="text-align:center;border:2px solid #E67E22">
+    <h2>🔒 无权访问</h2>
+    <p class="muted" style="font-size:14px">当前账号未被授权使用此功能模块，请联系管理员开通。</p></div>
+    <div style="text-align:center;margin-top:12px"><button class="btn" onclick="go('home')">← 返回首页</button></div>`;
+};
+
+VIEWS.userAdmin=function(phone){
+  if(!isAdmin()){showNoPerm();return}
+  var u=findUser(phone);
+  if(!u||u.role==='admin'){go('admin');return}
+  var perms=u.perms||{};
+  var h=`<div class="topbar"><button class="backbtn" onclick="go('admin')">‹ 面板</button><h1>⚙ 用户管理</h1></div>
+  <div class="card"><h2>${u.name}（${u.phone}）</h2>
+    <p class="muted" style="font-size:13px">注册：${u.regAt}｜最近登录：${u.lastLogin||'—'}</p>
+    <p style="font-size:14px">状态：${u.banned?'<b style="color:#C0392B">⛔ 已封禁'+(u.banReason?'（'+u.banReason+'）':'')+'</b>':'<b style="color:#1E8449">✅ 正常</b>'}</p></div>`;
+  /* 封禁/解封 */
+  h+=`<div class="card"><h2>${u.banned?'🔓 解封账号':'⛔ 封禁账号'}</h2>`;
+  if(!u.banned){
+    h+=`<p class="muted" style="font-size:13px">封禁后该账号立即被踢出，无法登录；学习数据完整保留，解封后可继续。</p>
+      <input class="ansin" id="banReason" placeholder="封禁原因（选填，如：连续三天未完成作业）" style="margin-bottom:10px;font-size:13px">
+      <button class="btn" style="width:100%;background:#C0392B;border-color:#C0392B" onclick="doBan('${phone}')">⛔ 确认封禁</button>`;
+  }else{
+    h+=`<button class="btn" style="width:100%" onclick="doUnban('${phone}')">🔓 解除封禁</button>`;
+  }
+  h+='</div>';
+  /* 模块授权 */
+  h+=`<div class="card"><h2>🔑 功能模块授权</h2>
+    <p class="muted" style="font-size:13px">取消勾选 = 该账号首页隐藏此模块且无法进入（AI 判分关闭后应用题只按最终答案判分）。全部勾选 = 全功能。</p>
+    <div id="permBox">`;
+  PERM_LIST.forEach(function(p){
+    var on=perms[p.mod]!==false;
+    h+=`<label style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--line);font-size:14px;cursor:pointer">
+      <input type="checkbox" id="perm_${p.mod}" ${on?'checked':''} onchange="permChanged=true">
+      <span>${p.icon} ${p.name}</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--sub)">${p.mod}</span></label>`;
+  });
+  h+=`</div>
+    <button class="btn" style="width:100%;margin-top:10px" onclick="savePerms('${phone}')">💾 保存授权</button>
+    <button class="btn plain" style="width:100%;margin-top:8px" onclick="grantAllPerms()">✅ 全部勾选（恢复全功能）</button>
+    <div id="permMsg" style="min-height:18px;font-size:13px;font-weight:700;color:var(--green);margin-top:6px"></div></div>`;
+  permChanged=false;
+  app.innerHTML=h;
+};
 
 VIEWS.admin=function(){
   if(!isAdmin()){go('home');return}
@@ -1410,7 +1547,8 @@ VIEWS.admin=function(){
       st={att:att,cor:cor};
       Object.keys(sv.lit||{}).forEach(function(k){if(sv.lit[k])lit++});
     }}catch(e){}
-    h+=`<tr><td>${u.phone}</td><td>${u.name}</td><td>${u.role==='admin'?'🛡 管理员':'👤 用户'}</td><td style="font-size:11px">${u.regAt}</td><td style="font-size:11px">${u.lastLogin||'—'}</td><td>${st.att}/${st.cor}</td><td>${lit}</td><td><a href="javascript:void(0)" onclick="adminReport('${u.phone}')" style="color:var(--blue)">查看</a></td></tr>`;
+    var banTag=u.banned?'<span style="color:#C0392B;font-weight:700">⛔ 封禁</span>':'';
+    h+=`<tr><td>${u.phone}</td><td>${u.name}</td><td>${u.role==='admin'?'🛡 管理员':'👤 用户'}${banTag}</td><td style="font-size:11px">${u.regAt}</td><td style="font-size:11px">${u.lastLogin||'—'}</td><td>${st.att}/${st.cor}</td><td>${lit}</td><td><a href="javascript:void(0)" onclick="adminReport('${u.phone}')" style="color:var(--blue)">报告</a>${u.role==='admin'?'':` ｜ <a href="javascript:void(0)" onclick="go('userAdmin','${u.phone}')" style="color:var(--orange)">管理</a>`}</td></tr>`;
   });
   h+='</table></div>';
   h+=`<div class="card"><h2>💾 数据保护</h2>
@@ -1464,6 +1602,28 @@ VIEWS.auth=function(){
   app.innerHTML=h;
 };
 
+function MODS_HTML(){
+  var mods=[
+    ['units','📚','按单元学','一单元一单元点亮'],
+    ['gen','🎲','智能出题器','自选单元和难度'],
+    ['wrong','📕','错题本','隔日到期重考'],
+    ['place','📋','两分钟摸底','先摸底再学习'],
+    ['map','🗺','一图看全册','知识全景'],
+    ['board','🧩','按板块攻','哪弱补哪'],
+    ['cheat','📖','速查大表','概念 · 白话 · 例子'],
+    ['four','🪜','应用题四步法','读题不慌'],
+    ['report','📊','家长报告','给爸妈看的一页']
+  ];
+  var h='';
+  mods.forEach(function(m){
+    var ok=hasPerm(m[0]);
+    h+=ok?`<div class="modbtn" onclick="go('${m[0]}')">${m[1]} ${m[2]}<small>${m[3]}</small></div>`
+        :`<div class="modbtn" style="opacity:0.45" onclick="showNoPerm()">${m[1]} ${m[2]}<small>🔒 未授权</small></div>`;
+  });
+  h+=`<div class="modbtn" onclick="go('about')">💡 关于<small>怎么用好这本"宝典"</small></div>`;
+  return h;
+}
+
 /* —— 首页 —— */
 VIEWS.home=function(){
   /* 登录墙：未登录只给登录/注册入口（旧游客存档保留，登录后可用） */
@@ -1500,16 +1660,7 @@ VIEWS.home=function(){
     <div style="margin-top:10px"><button class="btn plain" onclick="doLogout()">🚪 退出登录</button></div>
   </div>
   <div class="grid2">
-    <div class="modbtn" onclick="go('units')">📚 按单元学<small>一单元一单元点亮</small></div>
-    <div class="modbtn" onclick="go('gen')">🎲 智能出题器<small>自选单元和难度</small></div>
-    <div class="modbtn" onclick="go('wrong')">📕 错题本<small>隔日到期重考</small></div>
-    <div class="modbtn" onclick="go('place')">📋 两分钟摸底<small>先摸底再学习</small></div>
-    <div class="modbtn" onclick="go('map')">🗺 一图看全册<small>知识全景</small></div>
-    <div class="modbtn" onclick="go('board')">🧩 按板块攻<small>哪弱补哪</small></div>
-    <div class="modbtn" onclick="go('cheat')">📖 速查大表<small>概念 · 白话 · 例子</small></div>
-    <div class="modbtn" onclick="go('four')">🪜 应用题四步法<small>读题不慌</small></div>
-    <div class="modbtn" onclick="go('report')">📊 家长报告<small>给爸妈看的一页</small></div>
-    <div class="modbtn" onclick="go('about')">💡 关于<small>怎么用好这本"宝典"</small></div>
+    ${MODS_HTML()}
   </div>
   <p class="footer-tip">数据保存在本机 · 断网可用 · 把本文件发到孩子设备浏览器打开即可</p>`;
   app.innerHTML=h;
@@ -1902,6 +2053,7 @@ function callLLM(q,user,cfg,photo){
 }
 /* 拍照作答判分（视觉模型识别手写过程） */
 function gradePhoto(q,user,photo,cb){
+  if(!hasPerm('ai')){return cb({correct:false,feedback:'当前账号未授权 AI 拍照判分，请改用文字作答或联系管理员开通。',recognized:null})}
   var cfg=getAIcfg();
   if(!cfg){return cb({correct:false,feedback:'未配置 AI，无法识别照片',recognized:null})}
   callLLM(q,user,cfg,photo)
@@ -1915,6 +2067,10 @@ function gradePhoto(q,user,photo,cb){
 function gradeAnswer(q,user,cb){
   var local=procLocalGrade(q,user);
   if(local.level==='ok')return cb({correct:true,feedback:null});
+  if(!hasPerm('ai')){
+    var msg0=local.level==='mismatch'?'按最终答案判定为不正确。':'未授权 AI 判分。请至少写明最终答案（如「答：48 平方米」）。';
+    return cb({correct:false,feedback:msg0});
+  }
   var cfg=getAIcfg();
   if(!cfg||!cfg.endpoint||!cfg.key||!cfg.model){
     var msg=local.level==='mismatch'
