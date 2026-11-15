@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>六上数学乐园 · 青岛版（童趣版）</title>
-<meta name="app-version" content="v2.4.7-childlike-cloud">
+<meta name="app-version" content="v2.4.8-childlike-cloud">
 <style>
 :root{
   --bg:#F7F4EC; --card:#FFFFFF; --ink:#3A352B; --sub:#8A8474;
@@ -2261,6 +2261,14 @@ function addCustomQs(items){
     if(S.custom.some(function(x){return x.q===it.q}))return;
     if(seen[it.q])return;
     seen[it.q]=1;S.custom.push(it);added++;
+    /* v2.4.8 打通错题本：收录的题同步写入错题本（与既有错题共用 12 字段结构，
+       额外带 src:'photo' 溯源 + customId 关联收录库；due=明天，进入隔日重考队列） */
+    if(!Array.isArray(S.wrong))S.wrong=[];
+    if(!S.wrong.some(function(w){return w.q===it.q&&w.src==='photo'})){
+      S.wrong.push({q:it.q,ops:it.ops||null,ans:it.ans,ratio:it.ratio||0,exp:it.exp,unit:it.unit,kp:it.kp,
+        proc:(it.app&&!it.ops)?1:0,user:'拍照收录',ts:Date.now(),due:tomorrow(),done:false,
+        src:'photo',customId:it.id});
+    }
   });
   if(S.custom.length>500)S.custom=S.custom.slice(-500);
   if(added)save();
@@ -2291,6 +2299,8 @@ function startCustomQuiz(mode){
 function delCustomQ(id){
   if(!isAdmin())return;
   S.custom=S.custom.filter(function(x){return x.id!==id});
+  /* v2.4.8 删除收录题 → 错题本对应条目一并移除（保持两库一致） */
+  S.wrong=S.wrong.filter(function(w){return !(w.customId===id&&w.src==='photo')});
   save();go('importer');
 }
 VIEWS.importer=function(){
@@ -3095,6 +3105,11 @@ function finishAnswer(q,right,user,aiFeedback,optIdx){
     var wi=S.wrong[QS.idxList[QS.i]];
     if(wi)wi.done=true;
   }
+  /* v2.4.8 收录题练习答对：错题本里对应的拍照收录条目同步划掉（两库联动） */
+  if(right&&q.customId){
+    var cw=S.wrong.find(function(w){return w.customId===q.customId&&w.src==='photo'});
+    if(cw)cw.done=true;
+  }
   /* 过关模式：连对 2 题点亮知识点 */
   if(QS.mode==='pass'&&right&&QS.okStreak>=2&&!S.lit[QS.kid]){
     S.lit[QS.kid]=today();
@@ -3199,7 +3214,8 @@ VIEWS.wrong=function(){
   h+=`<div class="card"><h2>📚 全部错题（${S.wrong.length}）</h2>`;
   if(!S.wrong.length)h+='<p class="muted">空空如也，一个错题都没有！</p>';
   S.wrong.slice().reverse().slice(0,30).forEach(function(w){
-    h+=`<div class="kp" style="opacity:${w.done?0.5:1}"><b style="font-size:14.5px">${rich(w.q)}</b>
+    var srcTag=w.src==='photo'?'<span style="font-size:11px;background:var(--orangeL,#FDEBD0);color:var(--orange);border-radius:6px;padding:1px 6px;margin-left:6px">📁 拍照收录</span>':'';
+    h+=`<div class="kp" style="opacity:${w.done?0.5:1}"><b style="font-size:14.5px">${rich(w.q)}${srcTag}</b>
       <p class="muted">你的答案：${rich(w.user)||'—'} ｜ 正确：${rich(w.ans)} ${w.done?'｜ ✅ 已重考通过':''}</p>
       <p style="font-size:13.5px;color:var(--blue)">${rich(w.exp)}</p></div>`;
   });

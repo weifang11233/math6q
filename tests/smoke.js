@@ -77,7 +77,7 @@ chk('未登录显示登录/注册入口', app.innerHTML.includes('注册新用�
 chk('皮肤 CSS 覆盖层存在且位于 </style> 前',
   html.includes('童趣设计系统 · 全局覆盖层') && html.indexOf('童趣设计系统') < html.indexOf('</style>'));
 chk('皮肤关键动画/配色生效声明', html.includes('@keyframes floaty') && html.includes('--bg:#DFF3FF'));
-chk('版本标记 v2.4.7-childlike-cloud', html.includes('content="v2.4.7-childlike-cloud"'));
+chk('版本标记 v2.4.8-childlike-cloud', html.includes('content="v2.4.8-childlike-cloud"'));
 chk('存量本地账号升级上云逻辑存在', html.includes('升级为云端账号') && html.includes('检测到本机存量账号'));
 chk('v2.4 云端同步层存在', ['CLOUD','cloudProbe','cloudLogin','cloudRegister','cloudSaveState','mergeState','cloudMaybeMigrate','adminAddUser','adminResetPass','adminDoDel','aiMigrateToProxy']
   .every(k => html.includes(k)));
