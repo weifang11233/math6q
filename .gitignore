@@ -1,3 +1,4 @@
 deploy/nginx.conf.live
 *.local.*
 index.pre_v246.bak.html
+index.pre_v247.bak.html
