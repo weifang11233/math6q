@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>六上数学乐园 · 青岛版（童趣版）</title>
-<meta name="app-version" content="v2.4.8-childlike-cloud">
+<meta name="app-version" content="v2.4.9-childlike-cloud">
 <style>
 :root{
   --bg:#F7F4EC; --card:#FFFFFF; --ink:#3A352B; --sub:#8A8474;
@@ -2303,32 +2303,36 @@ function delCustomQ(id){
   S.wrong=S.wrong.filter(function(w){return !(w.customId===id&&w.src==='photo')});
   save();go('importer');
 }
-VIEWS.importer=function(){
-  if(!permGate('importer'))return;
+/* v2.4.9：拍照收题 UI 迁入错题本（importHTML 复用，importer 视图保留并重定向到 wrong） */
+function importHTML(){
   var list=(S.custom||[]).slice().reverse();
-  var h=`<div class="topbar"><button class="backbtn" onclick="go('home')">‹ 首页</button><h1>📁 拍照收题</h1></div>
-  <div class="card"><h2>📷 拍试卷，新题进题库</h2>
-    <p class="muted" style="font-size:13px">把试卷/练习册拍照上传，AI 识别上面的数学题并提取成<b>可判分题</b>（含答案与解析），收录进你的私人题库。收录的题能直接练习、判分、进错题本。模糊不清的题会自动跳过。</p>
+  var h=`<div class="card"><h2>📷 拍试卷，新题进错题本</h2>
+    <p class="muted" style="font-size:13px">把试卷/练习册拍照上传，AI 识别上面的数学题并提取成<b>可判分题</b>（含答案与解析）：收录进私人题库、<b>同步写入错题本</b>，隔日进重考队列。模糊不清的题会自动跳过。</p>
     <input type="file" id="impPhoto" accept="image/*" capture="environment" style="display:none" onchange="handleImportPhoto(this)">
     <div style="margin-top:8px"><button class="btn orange" style="width:100%" onclick="document.getElementById('impPhoto').click()">📷 拍照 / 选择试卷图片</button></div>
     <div id="impPrev" style="margin-top:8px"></div>
     <div id="impMsg" style="min-height:20px;font-size:13px;font-weight:700;margin-top:6px"></div></div>
-  <div class="card"><h2>📚 已收录（${list.length}）</h2>`;
+  <div class="card"><h2>📁 已收录（${list.length}）</h2>`;
   if(!list.length){h+='<p class="muted">还没有收录的题。拍一张卷子试试！</p>'}
   else{
     h+='<button class="btn" style="width:100%" onclick="startCustomQuiz(\'all\')">▶ 练全部 '+list.length+' 题</button>';
     if(list.length>=5)h+='<div style="margin-top:8px"><button class="btn plain" style="width:100%" onclick="startCustomQuiz(\'10\')">🎲 随机练 10 题</button></div>';
     h+='<div style="margin-top:10px">';
     list.slice(0,20).forEach(function(c){
+      var linked=S.wrong.some(function(w){return w.customId===c.id});
       h+=`<div style="border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px;font-size:13px">
         <div>${rich(c.q)}</div>
-        <div class="muted" style="margin-top:4px;font-size:12px">${c.ops?'选择':'填空'} · 答案 <b>${rich(String(c.ans))}</b> · ${customUnitName(c.unit)}${isAdmin()?` · <a href="javascript:void(0)" onclick="delCustomQ('${c.id}')" style="color:#C0392B">删除</a>`:''}</div></div>`;
+        <div class="muted" style="margin-top:4px;font-size:12px">${c.ops?'选择':'填空'} · 答案 <b>${rich(String(c.ans))}</b> · ${customUnitName(c.unit)}${linked?' · <span style="color:var(--green)">已在错题本</span>':''}${isAdmin()?` · <a href="javascript:void(0)" onclick="delCustomQ('${c.id}')" style="color:#C0392B">删除</a>`:''}</div></div>`;
     });
     if(list.length>20)h+=`<p class="muted" style="font-size:12px">（仅显示最近 20 题，共 ${list.length} 题）</p>`;
     h+='</div>';
   }
   h+='</div>';
-  app.innerHTML=h;
+  return h;
+}
+VIEWS.importer=function(){
+  if(!permGate('importer'))return;
+  go('wrong');   /* v2.4.9 入口并入错题本 */
 };
 function handleImportPhoto(input){
   var f=input.files&&input.files[0];
@@ -2347,8 +2351,8 @@ function handleImportPhoto(input){
         return;
       }
       var added=addCustomQs(r.ok);
-      if(m){m.style.color='#1E8449';m.textContent='✓ 识别完成：新收录 '+added+' 题（跳过 '+r.skip+' 个不可判分/重复项）。已可练习。'}
-      go('importer');
+      if(m){m.style.color='#1E8449';m.textContent='✓ 识别完成：新收录 '+added+' 题（跳过 '+r.skip+' 个不可判分/重复项）。已同步写入错题本。'}
+      go('wrong');   /* v2.4.9 回到错题本页（收题卡就地展示状态） */
     }).catch(function(e){
       if(m){m.style.color='#C0392B';m.textContent='✕ 识别失败：'+e.message+'。请确认光线充足、题目拍清楚。'}
     });
@@ -2562,14 +2566,13 @@ function MODS_HTML(){
   var mods=[
     ['units','📚','按单元学','一单元一单元点亮'],
     ['gen','🎲','智能出题器','自选单元和难度'],
-    ['wrong','📕','错题本','隔日到期重考'],
+    ['wrong','📕','错题本','重考 · 拍照收题'],
     ['place','📋','两分钟摸底','先摸底再学习'],
     ['map','🗺','一图看全册','知识全景'],
     ['board','🧩','按板块攻','哪弱补哪'],
     ['cheat','📖','速查大表','概念 · 白话 · 例子'],
     ['four','🪜','应用题四步法','读题不慌'],
-    ['report','📊','家长报告','给爸妈看的一页'],
-    ['importer','📁','拍照收题','卷子变题库']
+    ['report','📊','家长报告','给爸妈看的一页']
   ];
   var h='';
   mods.forEach(function(m){
@@ -3206,6 +3209,8 @@ VIEWS.wrong=function(){
   var later=S.wrong.filter(function(w){return !w.done&&w.due>today()});
   var doneN=S.wrong.filter(function(w){return w.done}).length;
   var h=`<div class="topbar"><button class="backbtn" onclick="go('home')">‹ 首页</button><h1>📕 错题本</h1></div>`;
+  /* v2.4.9 拍照收题并入错题本（有权限才显示；识别完成回跳本页） */
+  if(hasPerm('importer'))h+=importHTML();
   h+=`<div class="card"><h2>🕐 今天到期 ${due.length} 道</h2>`;
   if(due.length===0)h+='<p class="muted">没有到期的错题。隔日重考的安排：今天错的题，明天才会来提醒你——隔一天再考，记得才牢。</p>';
   else h+=`<p class="muted">先不看答案自己想，再对照解析。</p>
