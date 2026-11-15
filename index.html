@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>六上数学乐园 · 青岛版（童趣版）</title>
-<meta name="app-version" content="v2.4.9-childlike-cloud">
+<meta name="app-version" content="v2.4.10-childlike-cloud">
 <style>
 :root{
   --bg:#F7F4EC; --card:#FFFFFF; --ink:#3A352B; --sub:#8A8474;
@@ -3100,8 +3100,18 @@ function finishAnswer(q,right,user,aiFeedback,optIdx){
   else{
     QS.okStreak=0;
     QS.log.push({q:q,ok:false,user:user});
-    S.wrong.push({q:q.q,ops:q.ops||null,ans:q.ans,ratio:q.ratio||0,exp:q.exp,unit:q.unit,kp:q.kp,
-      proc:(q.app&&!q.ops)?1:0,user:user,ts:Date.now(),due:tomorrow(),done:false});
+    /* v2.4.10 全模块错题统一入本 + 防重复：同题面已有未通过条目 → 更新它（记最新错误答案、顺延到期日），
+       不再新增重复条目；已通过（done）或无记录才新增。错题重考再错、摸底/过关/闯关同题重复错都只保留一条。 */
+    var ex=S.wrong.find(function(w){return w.q===q.q&&!w.done});
+    if(ex){
+      ex.user=user;ex.ts=Date.now();ex.due=tomorrow();
+      if(ex.ops&&q.ops&&JSON.stringify(ex.ops)!==JSON.stringify(q.ops)){ex.ops=q.ops}  /* 选项形态变化时更新 */
+      if(q.customId&&!ex.customId){ex.customId=q.customId;ex.src='photo'}
+    }else{
+      S.wrong.push({q:q.q,ops:q.ops||null,ans:q.ans,ratio:q.ratio||0,exp:q.exp,unit:q.unit,kp:q.kp,
+        proc:(q.app&&!q.ops)?1:0,user:user,ts:Date.now(),due:tomorrow(),done:false,
+        src:q.customId?'photo':undefined,customId:q.customId||undefined});
+    }
   }
   /* 错题重考模式：答对就把那道错题标记为已通过 */
   if(QS.mode==='wrong'&&right&&QS.idxList){
