@@ -1,7 +1,31 @@
+# ── 真实凭证（部署时替换占位符后的成品，绝不入库）──────────────
 deploy/nginx.conf.live
 *.local.*
-index.pre_v246.bak.html
-index.pre_v247.bak.html
-index.pre_v248.bak.html
-index.pre_v249.bak.html
-index.pre_v2410.bak.html
+
+# ── 用户数据：账号表、学习存档、会话、巡检报告（隐私，永不入库）──
+server/data/
+data/
+*.bak-*-pwchange
+users.json
+sessions.json
+model_health.json
+state/
+
+# ── 部署备份 / 回滚点 / 线上快照（体积大且含冗余历史，留本地即可）──
+_deploy_bak_*/
+_pre_gitimport_bak/
+_online_full_*/
+index.pre_v*.bak.html
+*.orig
+*.rollback
+
+# ── 临时分析产物 ──────────────────────────────────────────────
+_chk_*.js
+_check_block_*.js
+live_check.html
+tmp/
+
+# ── 系统/编辑器 ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log

@@ -3,11 +3,12 @@
 const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const ROOT = __dirname;
-const DATA = path.join(ROOT, '_test_data');
-try { fs.rmSync(DATA, { recursive: true, force: true }); } catch (e) { }
+/* 数据目录放系统临时目录，避免把测试产生的 users.json 等落进仓库 */
+const DATA = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qd6-servertest-')), 'data');
 
 let passed = 0, failed = 0;
 function chk(name, cond, extra) {
@@ -56,7 +57,7 @@ function req(method, p, body, token) {
   r = await req('POST', '/api/register', { phone: '13900001001', pass: 'Aa1#bcdefg' });
   chk('重复注册被拒', r.code === 400, r);
   r = await req('POST', '/api/register', { phone: '13900001002', pass: 'weak' });
-  chk('弱密码被拒', r.code === 400 && /10 位/.test(r.body.err), r);
+  chk('弱密码被拒', r.code === 400 && /10-32 位/.test(r.body.err || ''), r);
   r = await req('POST', '/api/register', { phone: '23900001003', pass: 'Aa1#bcdefg' });
   chk('非法手机号被拒', r.code === 400, r);
   r = await req('POST', '/api/login', { phone: '13900001001', pass: 'wrong' });
@@ -67,7 +68,9 @@ function req(method, p, body, token) {
   chk('两次登录 token 不同（多会话）', tokXiao !== tokXiao2);
 
   console.log('── 预置管理员 ──');
-  r = await req('POST', '/api/login', { phone: '13455656547', pass: 'KAyFN&6t253Z#m2x0Fq3' });
+  /* 仓库内示例管理员密码（与 index.html / server.js 的示例 ADMIN_SALT+ADMIN_HASH 配对）。
+     线上真实凭证不入库，部署时经 QD6_ADMIN_SALT / QD6_ADMIN_HASH 环境变量注入。 */
+  r = await req('POST', '/api/login', { phone: '13455656547', pass: 'Change@Me2026' });
   chk('预置管理员可登录', r.code === 200 && r.body.user.role === 'admin', r);
   const tokAdmin = r.body.token;
 

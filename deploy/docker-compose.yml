@@ -1,4 +1,7 @@
 services:
+  # ── 站点 + 反向代理（对外 8766）──────────────────────────────
+  # 挂载整个部署目录，nginx root 指向 site/；配置改动后需 reload 才生效：
+  #   docker exec shuxueleyuan nginx -s reload
   shuxueleyuan:
     image: docker.1ms.run/library/nginx:alpine
     container_name: shuxueleyuan
@@ -6,7 +9,30 @@ services:
     ports:
       - "8766:80"
     volumes:
-      - ./site:/usr/share/nginx/html:ro
+      - ./:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     environment:
       - TZ=Asia/Shanghai
+
+  # ── 云端同步 API（对内 8877，由 nginx /api/ 反代）──────────────
+  # 零依赖 Node 服务：账号表、学习存档、会话、模型健康巡检。
+  # 数据落在 api-server/data/，容器重建不丢；升级只覆盖 server.js 后重启即可。
+  # 注意：巡检回调默认走 http://192.168.31.88:8766/ai/...（bridge 网络下
+  #       容器内访问 127.0.0.1:8766 不通），换网段用 QD6_HC_ENDPOINT 覆盖。
+  shuxue-api:
+    image: node:22-alpine
+    container_name: shuxue-api
+    restart: always
+    working_dir: /app
+    command: node /app/server.js
+    volumes:
+      - ./api-server:/app
+    ports:
+      - "8877:8877"
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=8877
+      - QD6_DATA=/app/data
+      # 真实管理员凭证从这里注入，不要写进 server.js 后提交：
+      # - QD6_ADMIN_SALT=xxxxxxxxxxxxxxxx
+      # - QD6_ADMIN_HASH=<sha256(salt::password)>

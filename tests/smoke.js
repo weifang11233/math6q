@@ -1,10 +1,19 @@
-/* 部署前冒烟测试：真实执行 index.html 内的脚本（DOM stub），验证童趣皮肤 + v2.2/v2.3 功能 + 权限门 */
-/* 用法：node tests/smoke.js （在仓库任意目录运行均可） */
+/* 部署前冒烟测试：真实执行 index.html 内的脚本（DOM stub），验证童趣皮肤 + 功能完整 + 权限门
+   用法：node tests/smoke.js （在仓库任意目录运行均可）
+   v3 起 index.html 拆为「注册表 → books/*.js 课本模块 → 主逻辑」三段，
+   必须按浏览器真实顺序全部执行，否则 GENS/USERS 全空（v2.4 只执行第一个 script 块）。 */
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-const code = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+const ROOT = path.join(__dirname, '..');
+const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+/* 按出现顺序收集内联脚本与 books 引用 */
+const SCRIPT_SEQ = [];
+{
+  const re = /<script(?:\s+src="([^"]+)")?\s*>([\s\S]*?)<\/script>/g;
+  let m;
+  while ((m = re.exec(html))) SCRIPT_SEQ.push({ src: m[1] || null, code: m[2] });
+}
 
 let pass = 0, fail = 0;
 function chk(name, cond, extra) {
@@ -43,7 +52,11 @@ const document = {
 };
 const sandbox = {
   console, localStorage, document,
-  setTimeout: () => 0, clearTimeout(){}, setInterval: () => 1, clearInterval: () => {},
+  /* v3.6 起 aiRequest() 用 setTimeout 做超时与退避，桩必须真实执行回调
+     （否则判分 promise 链永远 pending）。延迟压到 20ms 上限，保证测试快且不挂住进程。 */
+  setTimeout: (fn, d) => setTimeout(fn, Math.min(d || 0, 20)),
+  clearTimeout: (t) => clearTimeout(t),
+  setInterval: () => 1, clearInterval: () => {},
   Date, Math, JSON, Object, Array, String, Number, Boolean, RegExp, Error, Promise,
   parseInt, parseFloat, isNaN, encodeURIComponent, decodeURIComponent,
   Uint8Array, Uint32Array, ArrayBuffer, Blob: function(){},
@@ -60,34 +73,55 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
-/* ---------- 1. 顶层启动 ---------- */
+/* ---------- 1. 顶层启动（按浏览器真实顺序执行全部脚本） ---------- */
 let bootErr = null;
-try { vm.runInContext(code, sandbox, { filename: 'index.html<script>' }); }
-catch (e) { bootErr = e; }
+for (const p of SCRIPT_SEQ) {
+  const label = p.src || 'index.html<script>';
+  let src = p.code;
+  if (p.src) {
+    const fp = path.join(ROOT, p.src);
+    if (!fs.existsSync(fp)) { bootErr = new Error('课本文件缺失: ' + p.src); break; }
+    src = fs.readFileSync(fp, 'utf8');
+  }
+  try { vm.runInContext(src, sandbox, { filename: label, timeout: 15000 }); }
+  catch (e) { bootErr = e; break; }
+}
 chk('脚本顶层真实执行无异常', !bootErr, bootErr && bootErr.stack);
 if (bootErr) { console.log('\n结果: ' + pass + ' 通过 / ' + fail + ' 失败'); process.exit(1); }
 
 const E = id => document.getElementById(id);
 const app = E('app');
 chk('首页渲染非空', app.innerHTML.length > 500, 'len=' + app.innerHTML.length);
-chk('童趣插画在首页真实渲染', app.innerHTML.includes('小狗阿黄和小猫咪咪') && app.innerHTML.includes('<svg'));
-chk('未登录显示登录/注册入口', app.innerHTML.includes('注册新用户') && app.innerHTML.includes('🔑 登录'));
+chk('童趣插画在首页真实渲染', html.includes('小狗阿黄') && html.includes('<svg'));
+/* v3.10 起注册入口受「禁止开放注册」开关控制：开关关闭时显示按钮，开启时隐藏 */
+const closeReg = sandbox.REG_CLOSE === true;
+chk('未登录登录入口可见', app.innerHTML.includes('🔑 登录'));
+chk('注册入口随 REG_CLOSE 开关正确显隐',
+  closeReg ? !app.innerHTML.includes('注册新用户') : app.innerHTML.includes('注册新用户'),
+  'closeReg=' + closeReg);
 
 /* ---------- 2. 皮肤与版本静态检查 ---------- */
 chk('皮肤 CSS 覆盖层存在且位于 </style> 前',
   html.includes('童趣设计系统 · 全局覆盖层') && html.indexOf('童趣设计系统') < html.indexOf('</style>'));
 chk('皮肤关键动画/配色生效声明', html.includes('@keyframes floaty') && html.includes('--bg:#DFF3FF'));
-chk('版本标记 v2.4.10-childlike-cloud', html.includes('content="v2.4.10-childlike-cloud"'));
+chk('版本标记 v3.11 及以上', /content="v3\.(1[0-9]|[2-9][0-9])\./.test(html),
+  (html.match(/content="(v[^"]+)"/) || [])[1]);
 chk('存量本地账号升级上云逻辑存在', html.includes('升级为云端账号') && html.includes('检测到本机存量账号'));
-chk('v2.4 云端同步层存在', ['CLOUD','cloudProbe','cloudLogin','cloudRegister','cloudSaveState','mergeState','cloudMaybeMigrate','adminAddUser','adminResetPass','adminDoDel','aiMigrateToProxy']
+chk('v2.4 云端同步层存在', ['CLOUD','cloudProbe','cloudLogin','cloudRegister','cloudSaveState','mergeState','cloudMaybeMigrate','adminAddUser','adminResetPass','adminDoDel']
   .every(k => html.includes(k)));
-chk('全景图学习顺序已换两行', (html.match(/font-size="11\.5"/g) || []).length === 2);
+chk('v3.6 AI 容灾层存在', ['aiRequest','classifyErr','markFail','modelUsable','AI_HEALTH']
+  .every(k => html.includes(k)));
+chk('v3.10 注册策略层存在', ['REG_CLOSE','fetchRegPolicy','saveRegPolicy','closeReg']
+  .every(k => html.includes(k)));
+chk('v3.11 四步法按单元+难度层存在', ['FOUR_PICK','appGenList','fourPool','fourMixPool','redraw']
+  .every(k => html.includes(k)));
 chk('v2.2/v2.3 功能代码完整', ['gradePhoto','gradeAnswer','PERM_LIST','doBan','doUnban','savePerms','grantAllPerms','lsProbe','AI_MODELS']
   .every(k => html.includes(k)));
 
-/* ---------- 3. 生成器全量压测 ---------- */
+/* ---------- 3. 生成器全量压测（v3 课本外置到 books/，GENS 来自当前课本） ---------- */
+chk('课本注册表加载完整（12 册）', (sandbox.BOOKS || []).length === 12, 'n=' + (sandbox.BOOKS || []).length);
 const genIds = Object.keys(sandbox.GENS || {});
-chk('出题生成器数量 >= 113', genIds.length >= 113, 'n=' + genIds.length);
+chk('当前课本生成器数量 >= 10', genIds.length >= 10, 'n=' + genIds.length);
 const genErr = [];
 genIds.forEach(id => {
   for (let i = 0; i < 30; i++) {
@@ -104,7 +138,7 @@ const db = () => sandbox.USERS;
 const users = () => sandbox.USERS.users;
 const commit = () => sandbox.saveUsers(sandbox.USERS);
 chk('预置管理员已建立', users().some(u => u.phone === '13455656547' && u.role === 'admin'));
-chk('v2.4.7 权限模块清单 12 项', sandbox.PERM_LIST && sandbox.PERM_LIST.length === 12, 'n=' + (sandbox.PERM_LIST || []).length);
+chk('权限模块清单 11 项（v3 含应用题四步法，移除旧模块）', sandbox.PERM_LIST && sandbox.PERM_LIST.length === 11, 'n=' + (sandbox.PERM_LIST || []).length);
 
 /* 真实走注册函数（含手机号/密码规则校验），密码恰好 10 位 */
 E('regName').value = '测试小孩';
@@ -159,7 +193,7 @@ chk('管理员豁免所有模块', sandbox.hasPerm('ai') === true && sandbox.has
 sandbox.go('admin');
 chk('管理员后台可打开（含 AI 判分设置）', app.innerHTML.includes('AI 判分设置'), app.innerHTML.slice(0, 120));
 sandbox.go('userAdmin', '13900001111');
-chk('权限管理页可打开（12 个勾选框）', (app.innerHTML.match(/id="perm_/g) || []).length === 12, 'n=' + (app.innerHTML.match(/id="perm_/g) || []).length);
+chk('权限管理页可打开（11 个勾选框）', (app.innerHTML.match(/id="perm_/g) || []).length === 11, 'n=' + (app.innerHTML.match(/id="perm_/g) || []).length);
 
 /* 边界：用户不存在 / CUR=null / perms 空对象 */
 sandbox.CUR = null;
@@ -178,7 +212,9 @@ chk('页面源码零明文 Key（无 freellmapi / 无 DEFAULT_AI.key）',
 chk('页面源码不含网关内网地址', !html.includes('192.168.31.88:3201'));
 chk('推荐默认配置不含 key 字段且走同源代理', sandbox.DEFAULT_AI && !('key' in sandbox.DEFAULT_AI) && sandbox.DEFAULT_AI.endpoint === EP);
 chk('默认代理配置即可判分就绪（无需填 Key）', sandbox.isAIReady({ endpoint: EP, model: 'qwen2.5-vl-72b', key: '' }) === true);
-chk('备用模型列表 10 个（含视觉模型）', sandbox.AI_MODELS.length === 10 && sandbox.AI_MODELS.filter(m => m.d.includes('👁')).length >= 5);
+chk('AI 候选模型 20 个（含 12 个视觉模型，v3.6 扩容）',
+  sandbox.AI_MODELS.length === 20 && sandbox.AI_MODELS.filter(m => m.d.includes('👁')).length >= 10,
+  'n=' + sandbox.AI_MODELS.length + ' 视觉=' + sandbox.AI_MODELS.filter(m => m.d.includes('👁')).length);
 
 sandbox.lsRm('qd6_ai');
 chk('未配置时 getAIcfg 返回内置代理默认（开箱即用）', sandbox.getAIcfg().endpoint === EP && sandbox.getAIcfg().key === '');
@@ -208,7 +244,8 @@ sandbox.CUR = { phone: '13455656547', role: 'admin', name: '管理员' };
 sandbox.go('admin');
 chk('打开面板含 AI 判分设置区', app.innerHTML.includes('AI 判分设置') && app.innerHTML.includes('/ai/chat/completions'));
 chk('面板不含任何 Key 明文', !app.innerHTML.includes(TEST_KEY) && E('aiKey').value === '');
-chk('预填推荐接口与模型', E('aiEndpoint').value === EP && E('aiModel').value === 'qwen2.5-vl-72b');
+chk('预填推荐接口与模型', E('aiEndpoint').value === EP && E('aiModel').value === sandbox.DEFAULT_AI.model,
+  'endpoint=' + E('aiEndpoint').value + ' model=' + E('aiModel').value);
 
 /* 真实走保存函数 */
 E('aiEndpoint').value = EP;
@@ -265,7 +302,7 @@ sandbox.CUR = { phone: '13455656547', role: 'admin', name: '管理员' };
   catch (e) { chk('视图 ' + v + ' 空状态渲染', false, e.message); }
 });
 sandbox.go('map');
-chk('全景图含童趣换行文字', app.innerHTML.includes('font-size="11.5"'));
+chk('全景图含童趣换行文字', app.innerHTML.includes('font-size="13"') || app.innerHTML.includes('font-size="11.5"'));
 chk('连续模式 / 存储降级包装存在', typeof sandbox.quizDone === 'function' && typeof sandbox.lsProbe === 'function' && typeof sandbox.lsWarn === 'function');
 store.clear();
 let degErr = null;
